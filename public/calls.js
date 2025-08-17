@@ -735,9 +735,23 @@ function startCallStatusPolling() {
         } else if (callSession.status === 'active' && callSession.answer) {
             // Обрабатываем ответ на звонок
             if (!currentCall.answerReceived) {
+                console.log('📞 Получен ответ на звонок, обрабатываем...');
                 currentCall.answerReceived = true;
                 await handleCallAnswer(callSession.answer);
             }
+        }
+        
+        // Логируем состояние offer и answer для отладки
+        if (callSession.offer) {
+            console.log('📋 Offer доступен:', callSession.offer.type);
+        } else {
+            console.log('⚠️ Offer отсутствует');
+        }
+        
+        if (callSession.answer) {
+            console.log('📋 Answer доступен:', callSession.answer.type);
+        } else {
+            console.log('⚠️ Answer отсутствует');
         }
         
         // Обрабатываем ICE кандидаты
@@ -938,6 +952,14 @@ async function acceptIncomingCall(callSession) {
         } else {
             offer = callSession.offer;
         }
+        
+        // Проверяем, что offer не null и имеет правильную структуру
+        if (!offer || !offer.type || !offer.sdp) {
+            console.error('❌ Неверный формат offer:', offer);
+            throw new Error('Неверный формат offer - отсутствует type или sdp');
+        }
+        
+        console.log('✅ Offer успешно получен:', offer.type);
         
         // Устанавливаем удаленное описание
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -1161,6 +1183,14 @@ async function handleCallAnswer(answer) {
             } else {
                 answerObj = answer;
             }
+            
+            // Проверяем, что answer не null и имеет правильную структуру
+            if (!answerObj || !answerObj.type || !answerObj.sdp) {
+                console.error('❌ Неверный формат answer:', answerObj);
+                throw new Error('Неверный формат answer - отсутствует type или sdp');
+            }
+            
+            console.log('✅ Answer успешно получен:', answerObj.type);
             
             await peerConnection.setRemoteDescription(new RTCSessionDescription(answerObj));
             console.log('✅ Удаленное описание установлено');
