@@ -575,7 +575,7 @@ app.post('/call/offer', async (req, res) => {
             id: callId,
             caller: caller.login,
             recipient: recipient,
-            offer: offer,
+            offer: JSON.stringify(offer), // Сохраняем как JSON строку
             withVideo: withVideo,
             status: 'pending',
             participants: [caller.login, recipient],
@@ -694,7 +694,7 @@ app.post('/call/answer', async (req, res) => {
                     { id: callId },
                     { 
                         $set: { 
-                            answer: answer,
+                            answer: JSON.stringify(answer), // Сохраняем как JSON строку
                             status: 'active'
                         }
                     }
@@ -703,14 +703,14 @@ app.post('/call/answer', async (req, res) => {
             } catch (mongoError) {
                 console.error('❌ Ошибка MongoDB при обновлении звонка:', mongoError.message);
                 // Обновляем в памяти как fallback
-                callSession.answer = answer;
+                callSession.answer = JSON.stringify(answer); // Сохраняем как JSON строку
                 callSession.status = 'active';
                 inMemoryCalls.set(callId, callSession);
                 console.log('✅ Звонок принят в памяти:', callId, 'пользователем:', answerer.login);
             }
         } else {
             // Обновляем в памяти
-            callSession.answer = answer;
+            callSession.answer = JSON.stringify(answer); // Сохраняем как JSON строку
             callSession.status = 'active';
             inMemoryCalls.set(callId, callSession);
             console.log('✅ Звонок принят в памяти:', callId, 'пользователем:', answerer.login);
@@ -917,8 +917,22 @@ app.get('/call/status/:callId', async (req, res) => {
                 caller: callSession.caller,
                 recipient: callSession.recipient,
                 withVideo: callSession.withVideo,
-                offer: callSession.offer,
-                answer: callSession.answer,
+                offer: callSession.offer ? (() => {
+                    try {
+                        return JSON.parse(callSession.offer);
+                    } catch (e) {
+                        console.error('❌ Ошибка парсинга offer:', e);
+                        return null;
+                    }
+                })() : null,
+                answer: callSession.answer ? (() => {
+                    try {
+                        return JSON.parse(callSession.answer);
+                    } catch (e) {
+                        console.error('❌ Ошибка парсинга answer:', e);
+                        return null;
+                    }
+                })() : null,
                 iceCandidates: callSession.iceCandidates || []
             }
         });
