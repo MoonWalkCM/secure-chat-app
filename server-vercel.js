@@ -749,6 +749,32 @@ app.get('/call/status/:callId', (req, res) => {
     }
 });
 
+// Получение входящих звонков для пользователя
+app.get('/call/incoming', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        // Получаем все активные звонки для пользователя
+        const userCalls = Array.from(callSessions.values()).filter(session => 
+            session.recipient === user.login && session.status === 'pending'
+        );
+        
+        res.json(userCalls);
+    } catch (error) {
+        console.error('Ошибка получения входящих звонков:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 // Очистка старых звонков (каждые 5 минут)
 setInterval(() => {
     const now = Date.now();
