@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Проверка авторизации
     const token = localStorage.getItem('jwtToken');
     if (!token) {
-        window.location.href = 'index.html';
+        window.location.href = '/';
         return;
     }
 
@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const response = await fetch('/generate-keys', {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -279,125 +279,147 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     applyLanguage(savedLang);
 
-    // WebSocket соединение с переподключением
-    let ws;
+    // WebSocket соединение (отключено для Vercel serverless)
+    let ws = null;
+    let isConnected = false;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    let messagePollingInterval = null;
+    
+    // Переменные для чата
     const currentLogin = JSON.parse(atob(token.split('.')[1])).login;
     let selectedContact = null;
     let unreadMessages = JSON.parse(localStorage.getItem('unreadMessages') || '{}');
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 5;
-    const reconnectDelay = 3000;
-    let typingTimeout = null;
-    let activeAudioPlayers = [];
-
+    let displayedMessages = new Set();
     const sentSound = new Audio('https://freesound.org/data/previews/415/415764_5121236-lq.mp3');
     const receivedSound = new Audio('https://freesound.org/data/previews/320/320655_5260872-lq.mp3');
 
-    function connectWebSocket() {
-        // Используем текущий хост для WebSocket соединения
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        ws = new WebSocket(`${protocol}//${host}`);
-        ws.onopen = () => {
-            console.log('WebSocket подключен');
-            reconnectAttempts = 0;
-            ws.send(JSON.stringify({ type: 'login', token }));
-            console.log('Отправлено сообщение логина:', { type: 'login', token });
-        };
-
-        ws.onmessage = async (event) => {
-            let data;
+    // Функция для получения сообщений через polling (вместо WebSocket)
+    function startMessagePolling() {
+        if (messagePollingInterval) {
+            clearInterval(messagePollingInterval);
+        }
+        
+        messagePollingInterval = setInterval(async () => {
             try {
-                data = JSON.parse(event.data);
-                console.log('Получено WebSocket-сообщение:', data);
-            } catch (e) {
-                console.error('Ошибка парсинга WebSocket-сообщения:', e);
-                return;
-            }
-            if (data.type === 'error') {
-                showNotification(data.message);
-                return;
-            }
-            if (data.type === 'message' || data.type === 'file') {
-                // Обработка зашифрованных сообщений
-                if (data.encrypted_key && data.iv && data.from_login !== currentLogin) {
-                    // Это зашифрованное сообщение для получателя
-                    try {
-                        console.log('Попытка расшифровки сообщения:', {
-                            hasEncryptedKey: !!data.encrypted_key,
-                            hasIv: !!data.iv,
-                            contentLength: data.content?.length
-                        });
-                        
-                        const privateKeyString = localStorage.getItem('privateKey');
-                        if (privateKeyString) {
-                            const privateKey = await importPrivateKey(privateKeyString);
-                            const decryptedKey = await decryptMessage(data.encrypted_key, privateKey);
-                            
-                            // Расшифровываем AES ключ и сообщение
-                            const decryptedContent = await decryptAESMessage(data.content, decryptedKey, data.iv);
-                            data.content = decryptedContent;
-                            console.log('Сообщение успешно расшифровано');
-                        } else {
-                            console.error('Приватный ключ не найден в localStorage');
-                            data.content = '[Приватный ключ не найден]';
-                        }
-                    } catch (error) {
-                        console.error('Ошибка расшифровки сообщения:', error);
-                        data.content = '[Сообщение не может быть расшифровано]';
+                const response = await fetch('/messages', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
                     }
-                }
+                });
                 
-                if (data.is_audio && !data.content.startsWith('data:audio/')) {
-                    data.content = `data:audio/webm;base64,${data.content}`;
-                }
-                const mutedContacts = JSON.parse(localStorage.getItem('mutedContacts') || '[]');
-                if (!mutedContacts.includes(data.from_login)) {
-                    displayMessage(data);
-                    if (data.from_login !== currentLogin) {
-                        receivedSound.play().catch(e => {
-                            console.error('Ошибка воспроизведения звука получения:', e);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.messages && data.messages.length > 0) {
+                        // Обрабатываем новые сообщения
+                        data.messages.forEach(message => {
+                            if (!displayedMessages.has(message.id)) {
+                                displayMessage(message);
+                                displayedMessages.add(message.id);
+                            }
                         });
                     }
                 }
-            } else if (data.type === 'users') {
-                updateContactsOnlineStatus(data.users);
-            } else if (data.type === 'typing') {
-                if (data.from_login === selectedContact?.login) {
-                    chatRecipient.textContent = `${selectedContact.nickname || selectedContact.login} ${translations[savedLang].typing}`;
-                    clearTimeout(typingTimeout);
-                    typingTimeout = setTimeout(() => {
-                        chatRecipient.textContent = selectedContact.nickname || selectedContact.login;
-                    }, 2000);
-                }
-            } else if (data.type === 'read') {
-                const messageElement = document.querySelector(`.message[data-message-id="${data.message_id}"]`);
-                if (messageElement) {
-                    const status = messageElement.querySelector('.message-status');
-                    if (status) {
-                        status.innerHTML = '<i class="fas fa-check-double read"></i>';
-                    }
-                }
+            } catch (error) {
+                console.error('Ошибка при получении сообщений:', error);
             }
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket отключен');
-            if (reconnectAttempts < maxReconnectAttempts) {
-                reconnectAttempts++;
-                console.log(`Попытка переподключения ${reconnectAttempts}/${maxReconnectAttempts} через ${reconnectDelay}ms`);
-                setTimeout(connectWebSocket, reconnectDelay);
-            } else {
-                showNotification(translations[savedLang].connectionError, true);
-                updateContactsOnlineStatus([]);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket ошибка:', error);
-        };
+        }, 3000); // Проверяем каждые 3 секунды
     }
 
+    function stopMessagePolling() {
+        if (messagePollingInterval) {
+            clearInterval(messagePollingInterval);
+            messagePollingInterval = null;
+        }
+    }
+
+    // Функция подключения (упрощенная для serverless)
+    function connectWebSocket() {
+        console.log('Подключение к серверу...');
+        isConnected = true;
+        startMessagePolling();
+        updateConnectionStatus();
+    }
+
+    // Функция отключения
+    function disconnectWebSocket() {
+        console.log('Отключение от сервера...');
+        isConnected = false;
+        stopMessagePolling();
+        updateConnectionStatus();
+    }
+
+    // Обновление статуса подключения
+    function updateConnectionStatus() {
+        const statusElement = document.getElementById('connection-status');
+        if (statusElement) {
+            statusElement.textContent = isConnected ? 'Подключено' : 'Отключено';
+            statusElement.className = isConnected ? 'status-connected' : 'status-disconnected';
+        }
+    }
+
+    // Функция отображения сообщения
+    function displayMessage(data) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${data.from_login === currentLogin ? 'sent' : 'received'}`;
+        messageDiv.setAttribute('data-message-id', data.id);
+        
+        const isFromMe = data.from_login === currentLogin;
+        const senderName = isFromMe ? 'Вы' : (selectedContact?.nickname || data.from_login);
+        
+        let content = '';
+        if (data.type === 'text') {
+            content = `<div class="message-content">${escapeHtml(data.content)}</div>`;
+        } else if (data.type === 'file') {
+            content = `<div class="message-content file-message">
+                <i class="fas fa-file"></i>
+                <span>${data.filename || 'Файл'}</span>
+                <button onclick="downloadFile('${data.content}', '${data.filename || 'file'}')">Скачать</button>
+            </div>`;
+        } else if (data.type === 'audio') {
+            content = `<div class="message-content audio-message">
+                <audio controls>
+                    <source src="${data.content}" type="audio/webm">
+                </audio>
+            </div>`;
+        }
+        
+        messageDiv.innerHTML = `
+            <div class="message-header">
+                <span class="message-sender">${senderName}</span>
+                <span class="message-time">${new Date(data.timestamp).toLocaleTimeString()}</span>
+            </div>
+            ${content}
+            <div class="message-status">
+                ${isFromMe ? '<i class="fas fa-check"></i>' : ''}
+            </div>
+        `;
+        
+        messages.appendChild(messageDiv);
+        messages.scrollTop = messages.scrollHeight;
+        
+        // Воспроизводим звук для входящих сообщений
+        if (!isFromMe) {
+            receivedSound.play().catch(e => console.error('Ошибка воспроизведения звука:', e));
+        }
+    }
+
+    // Функция экранирования HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Функция скачивания файла
+    function downloadFile(base64Data, filename) {
+        const link = document.createElement('a');
+        link.href = `data:application/octet-stream;base64,${base64Data}`;
+        link.download = filename;
+        link.click();
+    }
+
+    // Подключаемся к серверу
     connectWebSocket();
 
     const messages = document.getElementById('messages');
@@ -765,7 +787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             fetch(`/report/${encodeURIComponent(nickname)}`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ reason })
@@ -1163,7 +1185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             fetch(`/contacts/${encodeURIComponent(login)}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('jwtToken')}` }
             })
             .then(response => response.json())
             .then(data => {
@@ -1189,7 +1211,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateContactNotifications(user.login);
         console.log('Загрузка сообщений для:', user.login);
         fetch(`/messages?to=${encodeURIComponent(user.login)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('jwtToken')}` }
         })
             .then(response => response.json())
             .then(data => {
@@ -1267,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const query = searchInput.value.trim();
         if (query) {
             fetch(`/search-user?nickname=${encodeURIComponent(query)}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('jwtToken')}` }
             })
             .then(response => response.json())
             .then(data => {
