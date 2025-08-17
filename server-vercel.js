@@ -70,6 +70,74 @@ function decryptWithAES(encryptedData, key, iv) {
     return decrypted;
 }
 
+// Создание тестовых пользователей
+async function createTestUsers() {
+    console.log('Создаем тестовых пользователей...');
+    
+    const { publicKey: publicKey1, privateKey: privateKey1 } = generateKeyPair();
+    const { publicKey: publicKey2, privateKey: privateKey2 } = generateKeyPair();
+    const { publicKey: publicKey3, privateKey: privateKey3 } = generateKeyPair();
+    
+    const hashedPassword = await bcrypt.hash('test', 10);
+    
+    // Тестовый пользователь 1
+    users.set('test', {
+        id: 1,
+        login: 'test',
+        password: hashedPassword,
+        email: 'test@example.com',
+        registration_key: 'test-key',
+        nickname: 'Тестовый пользователь',
+        theme: 'default',
+        primary_color: '#82AAFF',
+        level: 0,
+        is_banned: 0,
+        public_key: publicKey1,
+        private_key: privateKey1
+    });
+    
+    // Тестовый пользователь 2
+    users.set('test2', {
+        id: 2,
+        login: 'test2',
+        password: hashedPassword,
+        email: 'test2@example.com',
+        registration_key: 'test-key',
+        nickname: 'Тестовый пользователь 2',
+        theme: 'default',
+        primary_color: '#82AAFF',
+        level: 0,
+        is_banned: 0,
+        public_key: publicKey2,
+        private_key: privateKey2
+    });
+    
+    // Тестовый пользователь 3 (админ)
+    users.set('admin', {
+        id: 3,
+        login: 'admin',
+        password: hashedPassword,
+        email: 'admin@example.com',
+        registration_key: 'admin-key',
+        nickname: 'Администратор',
+        theme: 'dark',
+        primary_color: '#FF6B6B',
+        level: 10,
+        is_banned: 0,
+        public_key: publicKey3,
+        private_key: privateKey3
+    });
+    
+    // Добавляем их в контакты друг друга
+    contacts.set('test', ['test2', 'admin']);
+    contacts.set('test2', ['test', 'admin']);
+    contacts.set('admin', ['test', 'test2']);
+    
+    console.log('Тестовые пользователи созданы!');
+    console.log('Доступные пользователи:', Array.from(users.keys()));
+    console.log('Все пароли: test');
+}
+
 // API Routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public/index.html'));
@@ -691,44 +759,7 @@ setInterval(() => {
     }
 }, 300000);
 
-// Создаем тестового пользователя при первом запуске
-if (users.size === 0) {
-    const { publicKey, privateKey } = generateKeyPair();
-    users.set('test', {
-        id: 1,
-        login: 'test',
-        password: '$2b$10$rQZ8K9vX2mN3pL4qR5sT6uV7wX8yZ9aA0bB1cC2dE3fF4gG5hH6iI7jJ8kK9lL0mM1nN2oO3pP4qQ5rR6sS7tT8uU9vV0wW1xX2yY3zZ',
-        email: 'test@example.com',
-        registration_key: 'test-key',
-        nickname: 'Тестовый пользователь',
-        theme: 'default',
-        primary_color: '#82AAFF',
-        level: 0,
-        is_banned: 0,
-        public_key: publicKey,
-        private_key: privateKey
-    });
-    
-    // Создаем второго тестового пользователя
-    const { publicKey: publicKey2, privateKey: privateKey2 } = generateKeyPair();
-    users.set('test2', {
-        id: 2,
-        login: 'test2',
-        password: '$2b$10$rQZ8K9vX2mN3pL4qR5sT6uV7wX8yZ9aA0bB1cC2dE3fF4gG5hH6iI7jJ8kK9lL0mM1nN2oO3pP4qQ5rR6sS7tT8uU9vV0wW1xX2yY3zZ',
-        email: 'test2@example.com',
-        registration_key: 'test-key',
-        nickname: 'Тестовый пользователь 2',
-        theme: 'default',
-        primary_color: '#82AAFF',
-        level: 0,
-        is_banned: 0,
-        public_key: publicKey2,
-        private_key: privateKey2
-    });
-    
-    // Добавляем их в контакты друг друга
-    contacts.set('test', ['test2']);
-    contacts.set('test2', ['test']);
-}
+// Создаем тестовых пользователей при первом запуске
+createTestUsers();
 
 module.exports = app; 
