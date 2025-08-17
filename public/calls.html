@@ -111,16 +111,20 @@
         }
 
         .contact-status {
-            font-size: 0.9em;
-            color: #718096;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            display: inline-block;
         }
 
         .contact-status.online {
-            color: #48bb78;
+            background: #48bb78;
+            color: white;
         }
 
         .contact-status.offline {
-            color: #e53e3e;
+            background: #a0aec0;
+            color: white;
         }
 
         .contact-actions {
@@ -141,17 +145,23 @@
             font-size: 16px;
         }
 
-        .call-btn.video-call {
+        .video-call {
             background: #48bb78;
             color: white;
         }
 
-        .call-btn.audio-call {
+        .video-call:hover {
+            background: #38a169;
+            transform: scale(1.1);
+        }
+
+        .audio-call {
             background: #4299e1;
             color: white;
         }
 
-        .call-btn:hover {
+        .audio-call:hover {
+            background: #3182ce;
             transform: scale(1.1);
         }
 
@@ -169,37 +179,38 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
         }
 
+        /* Интерфейс звонка */
         .call-interface {
             display: none;
             flex-direction: column;
-            width: 100%;
             height: 100%;
+            position: relative;
         }
 
         .video-container {
+            flex: 1;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 20px;
-            height: 400px;
+            position: relative;
         }
 
         .video-wrapper {
             position: relative;
             border-radius: 15px;
             overflow: hidden;
-            background: #2d3748;
+            background: #000;
+            aspect-ratio: 16/9;
         }
 
         .video-wrapper video {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            border-radius: 15px;
         }
 
         .video-label {
@@ -210,14 +221,22 @@
             color: white;
             padding: 5px 10px;
             border-radius: 15px;
-            font-size: 0.9em;
+            font-size: 12px;
+        }
+
+        .call-status {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 20px;
         }
 
         .call-controls {
             display: flex;
             justify-content: center;
             gap: 20px;
-            margin-bottom: 20px;
+            padding: 20px;
         }
 
         .control-btn {
@@ -234,43 +253,54 @@
         }
 
         .control-btn.mute {
-            background: #e53e3e;
+            background: #a0aec0;
             color: white;
+        }
+
+        .control-btn.mute:hover {
+            background: #718096;
         }
 
         .control-btn.video {
-            background: #4299e1;
+            background: #a0aec0;
             color: white;
         }
 
-        .control-btn.fullscreen {
-            background: #805ad5;
-            color: white;
+        .control-btn.video:hover {
+            background: #718096;
         }
 
         .control-btn.end-call {
-            background: #e53e3e;
+            background: #f56565;
             color: white;
         }
 
-        .control-btn:hover {
+        .control-btn.end-call:hover {
+            background: #e53e3e;
             transform: scale(1.1);
         }
 
-        .call-status {
-            font-size: 1.2em;
-            color: #4a5568;
+        .placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #718096;
+        }
+
+        .placeholder i {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .placeholder h3 {
             margin-bottom: 10px;
+            color: #4a5568;
         }
 
-        .call-timer {
-            font-size: 14px;
-            color: #666;
-            text-align: center;
-            margin-top: 10px;
-        }
-
-        /* Стили для входящего звонка */
+        /* Интерфейс входящего звонка */
         .incoming-call-overlay {
             position: fixed;
             top: 0;
@@ -370,6 +400,21 @@
                 height: auto;
             }
             
+            .video-container {
+                grid-template-columns: 1fr;
+                height: 300px;
+            }
+            
+            .call-controls {
+                flex-wrap: wrap;
+            }
+            
+            .control-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 18px;
+            }
+            
             .incoming-call-modal {
                 margin: 20px;
                 padding: 20px;
@@ -419,7 +464,7 @@
                         </div>
                         <div class="video-wrapper">
                             <video id="remote-video" autoplay playsinline></video>
-                            <div class="video-label">Собесаааааедник</div>
+                            <div class="video-label">Собеседник</div>
                         </div>
                     </div>
 
@@ -432,9 +477,6 @@
                         <button class="control-btn video" id="video-btn" onclick="toggleVideo()">
                             <i class="fas fa-video"></i>
                         </button>
-                        <button class="control-btn fullscreen" id="fullscreen-btn" onclick="enterFullscreen()">
-                            <i class="fas fa-expand"></i>
-                        </button>
                         <button class="control-btn end-call" id="end-call-btn" onclick="endCall()">
                             <i class="fas fa-phone-slash"></i>
                         </button>
@@ -445,44 +487,6 @@
                     <i class="fas fa-phone"></i>
                     <h3>Нет активного звонка</h3>
                     <p>Выберите контакт для начала звонка</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Кнопки входящего звонка -->
-        <div class="incoming-call-buttons" id="incoming-call-buttons">
-            <h3>Входящий звонок от <span id="caller-name-top">пользователя</span></h3>
-            <div class="buttons">
-                <button class="accept-btn" onclick="acceptCall()">
-                    <i class="fas fa-phone"></i> Принять
-                </button>
-                <button class="reject-btn" onclick="rejectCall()">
-                    <i class="fas fa-phone-slash"></i> Отклонить
-                </button>
-            </div>
-        </div>
-
-        <!-- Полноэкранный режим -->
-        <div class="fullscreen-overlay" id="fullscreen-overlay">
-            <div class="fullscreen-video-container">
-                <video id="fullscreen-remote-video" autoplay playsinline></video>
-                <div class="fullscreen-info">
-                    <div id="fullscreen-caller-name">Собеседник</div>
-                    <div id="fullscreen-timer">00:00</div>
-                </div>
-                <div class="fullscreen-controls">
-                    <button class="control-btn mute" id="fullscreen-mute-btn" onclick="toggleMute()">
-                        <i class="fas fa-microphone"></i>
-                    </button>
-                    <button class="control-btn video" id="fullscreen-video-btn" onclick="toggleVideo()">
-                        <i class="fas fa-video"></i>
-                    </button>
-                    <button class="control-btn end-call" id="fullscreen-end-call-btn" onclick="endCall()">
-                        <i class="fas fa-phone-slash"></i>
-                    </button>
-                    <button class="control-btn" id="exit-fullscreen-btn" onclick="exitFullscreen()">
-                        <i class="fas fa-compress"></i>
-                    </button>
                 </div>
             </div>
         </div>
