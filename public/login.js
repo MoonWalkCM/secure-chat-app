@@ -75,11 +75,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showNotification(data.error === 'Ваш аккаунт заблокирован' ? translations[savedLang].accountBanned : data.error);
             } else {
                 localStorage.setItem('jwtToken', data.token);
-                localStorage.setItem('publicKey', data.user.public_key);
-                showNotification(data.message || 'Login successful', false);
+                localStorage.setItem('userData', JSON.stringify(data.user));
+                showNotification(data.message || 'Вход выполнен успешно!', false);
                 setTimeout(() => {
-                    window.location.href = data.redirect;
-                }, 2000);
+                    window.location.href = '/main';
+                }, 1000);
             }
         })
         .catch(error => {
