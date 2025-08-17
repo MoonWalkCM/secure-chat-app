@@ -150,21 +150,29 @@ function createPeerConnection() {
     const config = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-        ]
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ],
+        iceCandidatePoolSize: 10
     };
     
     const pc = new RTCPeerConnection(config);
     
     // Обработка удаленного потока
     pc.ontrack = (event) => {
-        console.log('Получен удаленный поток');
+        console.log('Получен удаленный поток:', event.streams);
         if (event.streams && event.streams.length > 0) {
             remoteStream = event.streams[0];
             const remoteVideo = document.getElementById('remote-video');
             if (remoteVideo) {
+                console.log('Устанавливаем удаленное видео');
                 remoteVideo.srcObject = remoteStream;
-                remoteVideo.play().catch(e => console.error('Ошибка воспроизведения:', e));
+                remoteVideo.onloadedmetadata = () => {
+                    console.log('Метаданные удаленного видео загружены');
+                    remoteVideo.play().catch(e => console.error('Ошибка воспроизведения:', e));
+                };
             }
         }
     };
@@ -172,6 +180,7 @@ function createPeerConnection() {
     // Обработка ICE кандидатов
     pc.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log('Отправляем ICE кандидат:', event.candidate);
             sendIceCandidate(event.candidate);
         }
     };
@@ -180,12 +189,29 @@ function createPeerConnection() {
     pc.onconnectionstatechange = () => {
         console.log('Состояние соединения:', pc.connectionState);
         if (pc.connectionState === 'connected') {
+            console.log('WebRTC соединение установлено!');
             updateCallStatus('Соединение установлено');
             startCallTimer();
         } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            console.log('WebRTC соединение потеряно');
             updateCallStatus('Соединение потеряно');
             stopCallTimer();
         }
+    };
+    
+    // Обработка состояния ICE соединения
+    pc.oniceconnectionstatechange = () => {
+        console.log('Состояние ICE соединения:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') {
+            console.log('ICE соединение установлено!');
+        } else if (pc.iceConnectionState === 'failed') {
+            console.log('ICE соединение не удалось');
+        }
+    };
+    
+    // Обработка состояния ICE gathering
+    pc.onicegatheringstatechange = () => {
+        console.log('Состояние ICE gathering:', pc.iceGatheringState);
     };
     
     return pc;
@@ -203,18 +229,22 @@ async function startCall(recipient, withVideo) {
         };
         
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Локальные медиа потоки получены');
         
         // Создаем RTCPeerConnection
         peerConnection = createPeerConnection();
         
         // Добавляем локальный поток
         localStream.getTracks().forEach(track => {
+            console.log('Добавляем трек:', track.kind);
             peerConnection.addTrack(track, localStream);
         });
         
         // Создаем offer
+        console.log('Создаем offer');
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
+        console.log('Локальное описание установлено');
         
         // Отправляем offer на сервер
         const response = await fetch('/call/offer', {
@@ -232,6 +262,7 @@ async function startCall(recipient, withVideo) {
         
         if (response.ok) {
             const data = await response.json();
+            console.log('Offer отправлен успешно, callId:', data.callId);
             
             // Устанавливаем текущий звонок
             currentCall = {
@@ -353,6 +384,11 @@ function startCallStatusPolling() {
                 const callStatus = await getCallStatus(currentCall.id);
                 if (callStatus) {
                     handleCallStatusUpdate(callStatus);
+                    
+                    // Обрабатываем ICE кандидаты
+                    if (callStatus.iceCandidates && callStatus.iceCandidates.length > 0) {
+                        await processIceCandidates(callStatus.iceCandidates);
+                    }
                 } else {
                     // Звонок не найден, завершаем
                     endCall();
@@ -362,6 +398,24 @@ function startCallStatusPolling() {
             console.error('Ошибка опроса статуса звонков:', error);
         }
     }, 2000);
+}
+
+// Обработка ICE кандидатов
+async function processIceCandidates(iceCandidates) {
+    if (!peerConnection) return;
+    
+    for (const iceData of iceCandidates) {
+        // Проверяем, что кандидат от собеседника и еще не обработан
+        if (iceData.from !== currentUser && !iceData.processed) {
+            try {
+                console.log('Добавляем ICE кандидат от собеседника:', iceData.candidate);
+                await peerConnection.addIceCandidate(new RTCIceCandidate(iceData.candidate));
+                iceData.processed = true; // Помечаем как обработанный
+            } catch (error) {
+                console.error('Ошибка добавления ICE кандидата:', error);
+            }
+        }
+    }
 }
 
 // Проверка входящих звонков
@@ -431,21 +485,26 @@ async function acceptIncomingCall(call) {
         };
         
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Локальные медиа потоки получены');
         
         // Создаем RTCPeerConnection
         peerConnection = createPeerConnection();
         
         // Добавляем локальный поток
         localStream.getTracks().forEach(track => {
+            console.log('Добавляем трек:', track.kind);
             peerConnection.addTrack(track, localStream);
         });
         
         // Устанавливаем удаленное описание
+        console.log('Устанавливаем удаленное описание (offer)');
         await peerConnection.setRemoteDescription(new RTCSessionDescription(call.offer));
         
         // Создаем answer
+        console.log('Создаем answer');
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
+        console.log('Локальное описание установлено');
         
         // Отправляем answer
         const response = await fetch('/call/answer', {
@@ -461,6 +520,7 @@ async function acceptIncomingCall(call) {
         });
         
         if (response.ok) {
+            console.log('Answer отправлен успешно');
             currentCall = {
                 id: call.id,
                 caller: call.caller,
@@ -476,6 +536,7 @@ async function acceptIncomingCall(call) {
     } catch (error) {
         console.error('Ошибка принятия звонка:', error);
         hideIncomingCall();
+        alert(`Ошибка принятия звонка: ${error.message}`);
     }
 }
 
@@ -564,14 +625,17 @@ function handleCallStatusUpdate(callStatus) {
         endCall();
     } else if (callStatus.status === 'active' && currentCall && currentCall.status === 'pending') {
         // Звонок принят
+        console.log('Звонок принят, устанавливаем соединение');
         if (callStatus.answer) {
             peerConnection.setRemoteDescription(new RTCSessionDescription(callStatus.answer))
                 .then(() => {
+                    console.log('Удаленное описание (answer) установлено');
                     currentCall.status = 'active';
                     updateCallStatus('Звонок активен');
                 })
                 .catch(error => {
                     console.error('Ошибка установки соединения:', error);
+                    alert(`Ошибка установки соединения: ${error.message}`);
                 });
         }
     }
