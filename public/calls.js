@@ -747,4 +747,48 @@ window.addEventListener('beforeunload', () => {
         endCall();
     }
     stopPing();
-}); 
+});
+
+// Функция очистки всех звонков (для отладки)
+async function clearAllCalls() {
+    try {
+        const response = await fetch('/call/clear-all', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Очищены все звонки:', data.message);
+            alert('Все звонки очищены!');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка очистки звонков:', error);
+    }
+}
+
+// Функция получения информации о звонках (для отладки)
+async function getCallDebugInfo() {
+    try {
+        const response = await fetch('/call/debug', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('📊 Информация о звонках:', data);
+            alert(`Всего звонков: ${data.totalCalls}\n${data.calls.map(c => `${c.id}: ${c.caller}→${c.recipient} (${c.status})`).join('\n')}`);
+        }
+    } catch (error) {
+        console.error('❌ Ошибка получения информации о звонках:', error);
+    }
+}
+
+// Добавляем кнопки отладки в консоль
+console.log('🔧 Функции отладки:');
+console.log('- clearAllCalls() - очистить все звонки');
+console.log('- getCallDebugInfo() - получить информацию о звонках'); 
