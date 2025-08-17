@@ -107,10 +107,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (data.error) {
                 showNotification(data.error);
             } else {
-                showNotification(data.message || 'Registration successful', false);
+                localStorage.setItem('jwtToken', data.token);
+                localStorage.setItem('userData', JSON.stringify(data.user));
+                showNotification(data.message || 'Регистрация выполнена успешно!', false);
                 setTimeout(() => {
-                    window.location.href = 'index.html';
-                }, 2000);
+                    window.location.href = '/main';
+                }, 1000);
             }
         })
         .catch(error => {
