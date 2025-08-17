@@ -3,22 +3,49 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 
 // Секреты
 const JWT_SECRET = process.env.JWT_SECRET || 'mwlauncher-secret-key-2024-fixed';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://secure-chat:iLMQjkum0b8rL5h2@cluster0.0s1thrl.mongodb.net/secure-chat?retryWrites=true&w=majority&appName=Cluster0';
+
+// MongoDB клиент
+let db = null;
+let client = null;
 
 // In-memory storage для Vercel (вместо SQLite)
 const users = new Map();
 const messages = new Map();
 const contacts = new Map();
 const activeConnections = new Map(); // Для отслеживания онлайн статуса
-const callSessions = new Map(); // Для управления звонками
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Подключение к MongoDB
+async function connectToMongoDB() {
+    try {
+        if (!client) {
+            client = new MongoClient(MONGODB_URI);
+            await client.connect();
+            db = client.db('secure-chat');
+            console.log('✅ Подключение к MongoDB установлено');
+        }
+        return db;
+    } catch (error) {
+        console.error('❌ Ошибка подключения к MongoDB:', error);
+        return null;
+    }
+}
+
+// Получение коллекции звонков
+async function getCallsCollection() {
+    const database = await connectToMongoDB();
+    return database ? database.collection('calls') : null;
+}
 
 // Функции шифрования
 function generateKeyPair() {
@@ -500,7 +527,7 @@ app.get('/ice-servers', (req, res) => {
 });
 
 // Инициация звонка
-app.post('/call/offer', (req, res) => {
+app.post('/call/offer', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -522,35 +549,35 @@ app.post('/call/offer', (req, res) => {
         
         // Очищаем старые звонки (старше 10 минут)
         const now = Date.now();
-        for (const [callId, session] of callSessions.entries()) {
-            if (now - session.timestamp > 600000) { // 10 минут
-                console.log('🗑️ Удаляем старый звонок:', callId);
-                callSessions.delete(callId);
-            }
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            await callsCollection.deleteMany({ timestamp: { $lt: now - 600000 } }); // 10 минут
         }
         
         // Проверяем, не занят ли получатель
-        const recipientSession = Array.from(callSessions.values()).find(session => 
-            session.participants.includes(recipient) && 
-            (session.status === 'active' || session.status === 'pending') &&
-            (now - session.timestamp) < 300000 // Только звонки младше 5 минут
-        );
-        
-        if (recipientSession) {
-            console.log('🚫 Получатель занят:', recipient, 'занят звонком:', recipientSession.id);
-            return res.status(409).json({ error: 'Пользователь занят другим звонком' });
-        }
-        
-        // Проверяем, не инициировал ли звонящий уже звонок
-        const callerSession = Array.from(callSessions.values()).find(session => 
-            session.caller === caller.login && 
-            (session.status === 'active' || session.status === 'pending') &&
-            (now - session.timestamp) < 300000 // Только звонки младше 5 минут
-        );
-        
-        if (callerSession) {
-            console.log('🚫 Звонящий уже в звонке:', caller.login, 'звонок:', callerSession.id);
-            return res.status(409).json({ error: 'У вас уже есть активный звонок' });
+        if (callsCollection) {
+            const recipientSession = await callsCollection.findOne({
+                participants: recipient,
+                status: { $in: ['active', 'pending'] },
+                timestamp: { $gt: now - 300000 } // Только звонки младше 5 минут
+            });
+            
+            if (recipientSession) {
+                console.log('🚫 Получатель занят:', recipient, 'занят звонком:', recipientSession.id);
+                return res.status(409).json({ error: 'Пользователь занят другим звонком' });
+            }
+            
+            // Проверяем, не инициировал ли звонящий уже звонок
+            const callerSession = await callsCollection.findOne({
+                caller: caller.login,
+                status: { $in: ['active', 'pending'] },
+                timestamp: { $gt: now - 300000 } // Только звонки младше 5 минут
+            });
+            
+            if (callerSession) {
+                console.log('🚫 Звонящий уже в звонке:', caller.login, 'звонок:', callerSession.id);
+                return res.status(409).json({ error: 'У вас уже есть активный звонок' });
+            }
         }
         
         const callId = Date.now().toString();
@@ -566,9 +593,12 @@ app.post('/call/offer', (req, res) => {
             iceCandidates: []
         };
         
-        callSessions.set(callId, callSession);
+        // Сохраняем в MongoDB
+        if (callsCollection) {
+            await callsCollection.insertOne(callSession);
+        }
+        
         console.log('📞 Создан новый звонок:', callId, 'от', caller.login, 'к', recipient);
-        console.log('📊 Всего звонков в памяти:', callSessions.size);
         
         res.json({ 
             success: true, 
@@ -582,7 +612,7 @@ app.post('/call/offer', (req, res) => {
 });
 
 // Ответ на звонок
-app.post('/call/answer', (req, res) => {
+app.post('/call/answer', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -598,11 +628,15 @@ app.post('/call/answer', (req, res) => {
         const { callId, answer } = req.body;
         console.log('📞 Запрос на принятие звонка:', callId, 'от пользователя:', answerer.login);
         
-        const callSession = callSessions.get(callId);
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
+        
+        const callSession = await callsCollection.findOne({ id: callId });
         
         if (!callSession) {
             console.log('❌ Звонок не найден для принятия:', callId);
-            console.log('📋 Доступные звонки:', Array.from(callSessions.keys()));
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
@@ -611,10 +645,18 @@ app.post('/call/answer', (req, res) => {
             return res.status(403).json({ error: 'Не авторизован для ответа на этот звонок' });
         }
         
-        callSession.answer = answer;
-        callSession.status = 'active';
+        // Обновляем звонок
+        await callsCollection.updateOne(
+            { id: callId },
+            { 
+                $set: { 
+                    answer: answer,
+                    status: 'active'
+                }
+            }
+        );
+        
         console.log('✅ Звонок принят:', callId, 'пользователем:', answerer.login);
-        console.log('📊 Всего звонков в памяти:', callSessions.size);
         
         res.json({ 
             success: true, 
@@ -627,7 +669,7 @@ app.post('/call/answer', (req, res) => {
 });
 
 // Отклонение звонка
-app.post('/call/reject', (req, res) => {
+app.post('/call/reject', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -641,7 +683,13 @@ app.post('/call/reject', (req, res) => {
         }
         
         const { callId } = req.body;
-        const callSession = callSessions.get(callId);
+        
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
+        
+        const callSession = await callsCollection.findOne({ id: callId });
         
         if (!callSession) {
             return res.status(404).json({ error: 'Звонок не найден' });
@@ -651,7 +699,12 @@ app.post('/call/reject', (req, res) => {
             return res.status(403).json({ error: 'Не авторизован для отклонения этого звонка' });
         }
         
-        callSession.status = 'rejected';
+        // Обновляем статус
+        await callsCollection.updateOne(
+            { id: callId },
+            { $set: { status: 'rejected' } }
+        );
+        
         console.log('Звонок отклонен:', callId, 'пользователем:', rejecter.login);
         
         res.json({ 
@@ -665,7 +718,7 @@ app.post('/call/reject', (req, res) => {
 });
 
 // Завершение звонка
-app.post('/call/end', (req, res) => {
+app.post('/call/end', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -679,7 +732,13 @@ app.post('/call/end', (req, res) => {
         }
         
         const { callId } = req.body;
-        const callSession = callSessions.get(callId);
+        
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
+        
+        const callSession = await callsCollection.findOne({ id: callId });
         
         if (!callSession) {
             console.log('Звонок не найден для завершения:', callId);
@@ -690,7 +749,12 @@ app.post('/call/end', (req, res) => {
             return res.status(403).json({ error: 'Не авторизован для завершения этого звонка' });
         }
         
-        callSession.status = 'ended';
+        // Обновляем статус
+        await callsCollection.updateOne(
+            { id: callId },
+            { $set: { status: 'ended' } }
+        );
+        
         console.log('Звонок завершен:', callId, 'пользователем:', ender.login);
         
         res.json({ 
@@ -704,7 +768,7 @@ app.post('/call/end', (req, res) => {
 });
 
 // ICE кандидаты
-app.post('/call/ice-candidate', (req, res) => {
+app.post('/call/ice-candidate', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -718,7 +782,13 @@ app.post('/call/ice-candidate', (req, res) => {
         }
         
         const { callId, candidate } = req.body;
-        const callSession = callSessions.get(callId);
+        
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
+        
+        const callSession = await callsCollection.findOne({ id: callId });
         
         if (!callSession) {
             return res.status(404).json({ error: 'Звонок не найден' });
@@ -728,16 +798,20 @@ app.post('/call/ice-candidate', (req, res) => {
             return res.status(403).json({ error: 'Не авторизован для этого звонка' });
         }
         
-        // Сохраняем ICE кандидата
-        if (!callSession.iceCandidates) {
-            callSession.iceCandidates = [];
-        }
-        callSession.iceCandidates.push({
-            from: sender.login,
-            candidate: candidate,
-            timestamp: Date.now(),
-            processed: false
-        });
+        // Добавляем ICE кандидата
+        await callsCollection.updateOne(
+            { id: callId },
+            { 
+                $push: { 
+                    iceCandidates: {
+                        from: sender.login,
+                        candidate: candidate,
+                        timestamp: Date.now(),
+                        processed: false
+                    }
+                }
+            }
+        );
         
         console.log('ICE кандидат получен от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
         
@@ -752,7 +826,7 @@ app.post('/call/ice-candidate', (req, res) => {
 });
 
 // Получение статуса звонка
-app.get('/call/status/:callId', (req, res) => {
+app.get('/call/status/:callId', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -767,13 +841,16 @@ app.get('/call/status/:callId', (req, res) => {
         
         const { callId } = req.params;
         console.log('🔍 Запрос статуса звонка:', callId, 'от пользователя:', user.login);
-        console.log('📊 Всего звонков в памяти:', callSessions.size);
         
-        const callSession = callSessions.get(callId);
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
+        
+        const callSession = await callsCollection.findOne({ id: callId });
         
         if (!callSession) {
             console.log('❌ Звонок не найден для статуса:', callId);
-            console.log('📋 Доступные звонки:', Array.from(callSessions.keys()));
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
@@ -804,7 +881,7 @@ app.get('/call/status/:callId', (req, res) => {
 });
 
 // Получение входящих звонков для пользователя
-app.get('/call/incoming', (req, res) => {
+app.get('/call/incoming', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -817,10 +894,16 @@ app.get('/call/incoming', (req, res) => {
             return res.status(401).json({ error: 'Пользователь не найден' });
         }
         
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
+        
         // Получаем все активные звонки для пользователя
-        const userCalls = Array.from(callSessions.values()).filter(session => 
-            session.recipient === user.login && session.status === 'pending'
-        );
+        const userCalls = await callsCollection.find({
+            recipient: user.login,
+            status: 'pending'
+        }).toArray();
         
         if (userCalls.length > 0) {
             console.log('📞 Входящие звонки для', user.login, ':', userCalls.length);
@@ -834,25 +917,8 @@ app.get('/call/incoming', (req, res) => {
     }
 });
 
-// Очистка старых звонков (каждые 10 минут)
-setInterval(() => {
-    const now = Date.now();
-    let cleanedCount = 0;
-    for (const [callId, session] of callSessions.entries()) {
-        // Удаляем только очень старые звонки (старше 30 минут)
-        if (now - session.timestamp > 1800000) { // 30 минут
-            callSessions.delete(callId);
-            cleanedCount++;
-            console.log('🗑️ Автоматически удален старый звонок:', callId);
-        }
-    }
-    if (cleanedCount > 0) {
-        console.log(`🧹 Автоматически очищено ${cleanedCount} старых звонков`);
-    }
-}, 600000); // Каждые 10 минут
-
 // Принудительная очистка всех звонков (для отладки)
-app.post('/call/clear-all', (req, res) => {
+app.post('/call/clear-all', async (req, res) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
         if (!token) {
@@ -865,51 +931,20 @@ app.post('/call/clear-all', (req, res) => {
             return res.status(401).json({ error: 'Пользователь не найден' });
         }
         
-        const count = callSessions.size;
-        callSessions.clear();
-        console.log(`Пользователь ${user.login} очистил все звонки (${count} шт.)`);
+        const callsCollection = await getCallsCollection();
+        if (!callsCollection) {
+            return res.status(500).json({ error: 'Ошибка базы данных' });
+        }
         
-        res.json({ success: true, message: `Очищено ${count} звонков` });
+        const result = await callsCollection.deleteMany({});
+        console.log(`Пользователь ${user.login} очистил все звонки (${result.deletedCount} шт.)`);
+        
+        res.json({ success: true, message: `Очищено ${result.deletedCount} звонков` });
     } catch (error) {
         console.error('Ошибка очистки звонков:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
-
-// Получение информации о звонках (для отладки)
-app.get('/call/debug', (req, res) => {
-    try {
-        const token = req.headers.authorization?.replace('Bearer ', '');
-        if (!token) {
-            return res.status(401).json({ error: 'Токен не предоставлен' });
-        }
-        
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = users.get(decoded.login);
-        if (!user) {
-            return res.status(401).json({ error: 'Пользователь не найден' });
-        }
-        
-        const calls = Array.from(callSessions.values()).map(session => ({
-            id: session.id,
-            caller: session.caller,
-            recipient: session.recipient,
-            status: session.status,
-            timestamp: session.timestamp,
-            age: Date.now() - session.timestamp
-        }));
-        
-        res.json({ 
-            totalCalls: callSessions.size,
-            calls: calls
-        });
-    } catch (error) {
-        console.error('Ошибка получения информации о звонках:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-});
-
-// === ДОПОЛНИТЕЛЬНЫЕ ЭНДПОИНТЫ ===
 
 // Поиск пользователей по никнейму
 app.get('/search-user', (req, res) => {
@@ -1036,7 +1071,32 @@ app.post('/ping', (req, res) => {
     }
 });
 
+// Очистка старых звонков (каждые 10 минут)
+setInterval(async () => {
+    try {
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            const now = Date.now();
+            const result = await callsCollection.deleteMany({ 
+                timestamp: { $lt: now - 1800000 } // 30 минут
+            });
+            if (result.deletedCount > 0) {
+                console.log(`🧹 Автоматически очищено ${result.deletedCount} старых звонков`);
+            }
+        }
+    } catch (error) {
+        console.error('❌ Ошибка автоматической очистки звонков:', error);
+    }
+}, 600000); // Каждые 10 минут
+
 // Создаем тестовых пользователей при первом запуске
 createTestUsers();
+
+// Инициализируем MongoDB при запуске
+connectToMongoDB().then(() => {
+    console.log('🚀 Сервер готов к работе с MongoDB');
+}).catch(error => {
+    console.error('❌ Ошибка инициализации MongoDB:', error);
+});
 
 module.exports = app; 
