@@ -200,49 +200,30 @@ async function startVideoCall(recipient) {
     try {
         console.log('🎥 Начинаем видеозвонок к', recipient);
         
-        // Запрашиваем медиа потоки с высоким качеством
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: 48000
-            },
-            video: {
-                width: { ideal: 1920, min: 1280 },
-                height: { ideal: 1080, min: 720 },
-                frameRate: { ideal: 30, min: 24 },
-                facingMode: 'user'
-            }
-        });
-        
-        localStream = stream;
-        localVideo.srcObject = stream;
-        
         // Создаем WebRTC соединение
-        await createPeerConnection();
+        createPeerConnection();
         
-        // Добавляем локальные треки с приоритетом
+        // Получаем медиапоток
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30 }
+            },
+            audio: true
+        });
+        
+        // Добавляем локальные треки
         stream.getTracks().forEach(track => {
-            const sender = peerConnection.addTrack(track, stream);
-            
-            // Устанавливаем приоритет для видео
-            if (track.kind === 'video') {
-                const params = sender.getParameters();
-                if (params.encodings && params.encodings.length > 0) {
-                    params.encodings[0].maxBitrate = 2500000; // 2.5 Mbps
-                    params.encodings[0].maxFramerate = 30;
-                    sender.setParameters(params);
-                }
-            }
+            peerConnection.addTrack(track, stream);
         });
         
-        // Создаем offer с оптимизациями
-        const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-        });
+        // Показываем локальное видео
+        localVideo.srcObject = stream;
+        localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
         
+        // Создаем offer
+        const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         
         // Отправляем offer на сервер
@@ -260,25 +241,32 @@ async function startVideoCall(recipient) {
         });
         
         if (!response.ok) {
-            throw new Error('Ошибка инициации звонка');
+            throw new Error(`HTTP ${response.status}`);
         }
         
         const data = await response.json();
-        currentCall = {
-            id: data.callId,
-            recipient: recipient,
-            type: 'video'
-        };
         
-        // Показываем интерфейс звонка
-        showCallInterface();
-        startCallStatusPolling();
+        // Устанавливаем текущий звонок
+        currentCall = {
+            callId: data.callId,
+            recipient: recipient,
+            isIncoming: false,
+            stream: stream,
+            answerReceived: false
+        };
         
         console.log('✅ Видеозвонок инициирован:', data.callId);
         
+        // Начинаем опрос статуса
+        startCallStatusPolling();
+        
+        // Показываем интерфейс звонка
+        showCallInterface();
+        
     } catch (error) {
         console.error('❌ Ошибка начала видеозвонка:', error);
-        alert('Ошибка начала видеозвонка: ' + error.message);
+        alert('Ошибка начала звонка: ' + error.message);
+        endCall();
     }
 }
 
@@ -345,8 +333,13 @@ async function startAudioCall(recipient) {
 }
 
 // Создание WebRTC соединения
-async function createPeerConnection() {
-    const configuration = {
+function createPeerConnection() {
+    if (peerConnection) {
+        peerConnection.close();
+    }
+    
+    // Создаем новое соединение с STUN серверами
+    peerConnection = new RTCPeerConnection({
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
@@ -354,15 +347,39 @@ async function createPeerConnection() {
             { urls: 'stun:stun3.l.google.com:19302' },
             { urls: 'stun:stun4.l.google.com:19302' }
         ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require',
-        iceTransportPolicy: 'all'
+        iceCandidatePoolSize: 10
+    });
+    
+    console.log('🔗 WebRTC соединение создано');
+    
+    // Обработчик получения удаленного потока
+    peerConnection.ontrack = (event) => {
+        console.log('📺 Получен удаленный поток');
+        
+        if (event.streams && event.streams[0]) {
+            const remoteStream = event.streams[0];
+            
+            // Показываем удаленное видео
+            remoteVideo.srcObject = remoteStream;
+            
+            // Принудительно воспроизводим видео
+            remoteVideo.play().catch(e => {
+                console.log('⚠️ Ошибка воспроизведения удаленного видео:', e);
+                // Повторная попытка через 1 секунду
+                setTimeout(() => {
+                    remoteVideo.play().catch(e2 => console.log('⚠️ Ошибка полноэкранного воспроизведения:', e2));
+                }, 1000);
+            });
+            
+            // Также показываем в полноэкранном режиме
+            fullscreenRemoteVideo.srcObject = remoteStream;
+            fullscreenRemoteVideo.play().catch(e => {
+                console.log('⚠️ Ошибка полноэкранного воспроизведения:', e);
+            });
+        }
     };
     
-    peerConnection = new RTCPeerConnection(configuration);
-    
-    // Обработчики событий
+    // Обработчик ICE кандидатов
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
             console.log('🧊 Отправляем ICE кандидат:', event.candidate.type);
@@ -370,67 +387,18 @@ async function createPeerConnection() {
         }
     };
     
-    peerConnection.onconnectionstatechange = () => {
-        console.log('🔗 Состояние соединения:', peerConnection.connectionState);
-        updateCallStatus(peerConnection.connectionState);
-        
-        if (peerConnection.connectionState === 'connected') {
-            console.log('✅ WebRTC соединение установлено!');
-            updateCallStatus('Подключено');
-        } else if (peerConnection.connectionState === 'failed') {
-            console.log('❌ WebRTC соединение не удалось');
-            updateCallStatus('Ошибка соединения');
-        }
-    };
-    
+    // Обработчики состояния соединения
     peerConnection.oniceconnectionstatechange = () => {
         console.log('🧊 Состояние ICE:', peerConnection.iceConnectionState);
-        
-        if (peerConnection.iceConnectionState === 'connected') {
-            console.log('✅ ICE соединение установлено!');
-        } else if (peerConnection.iceConnectionState === 'failed') {
-            console.log('❌ ICE соединение не удалось');
-        }
+    };
+    
+    peerConnection.onconnectionstatechange = () => {
+        console.log('🔗 Состояние соединения:', peerConnection.connectionState);
     };
     
     peerConnection.onicegatheringstatechange = () => {
         console.log('🧊 Состояние сбора ICE:', peerConnection.iceGatheringState);
     };
-    
-    peerConnection.ontrack = (event) => {
-        console.log('📺 Получен удаленный поток');
-        remoteStream = event.streams[0];
-        remoteVideo.srcObject = remoteStream;
-        fullscreenRemoteVideo.srcObject = remoteStream;
-        
-        // Принудительное воспроизведение с повторными попытками
-        const playVideo = async () => {
-            try {
-                await remoteVideo.play();
-                console.log('✅ Удаленное видео воспроизводится');
-            } catch (error) {
-                console.log('⚠️ Ошибка воспроизведения удаленного видео:', error);
-                // Повторная попытка через 1 секунду
-                setTimeout(playVideo, 1000);
-            }
-        };
-        
-        const playFullscreenVideo = async () => {
-            try {
-                await fullscreenRemoteVideo.play();
-                console.log('✅ Полноэкранное видео воспроизводится');
-            } catch (error) {
-                console.log('⚠️ Ошибка полноэкранного воспроизведения:', error);
-                // Повторная попытка через 1 секунду
-                setTimeout(playFullscreenVideo, 1000);
-            }
-        };
-        
-        playVideo();
-        playFullscreenVideo();
-    };
-    
-    console.log('🔗 WebRTC соединение создано');
 }
 
 // Отправка ICE кандидата с повторными попытками
@@ -638,53 +606,65 @@ async function endCall() {
     try {
         console.log('📞 Завершаем звонок');
         
-        // Останавливаем опросы
-        stopCallStatusPolling();
-        
-        // Останавливаем локальные потоки
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
+        // Останавливаем опрос статуса
+        if (callStatusPolling) {
+            clearInterval(callStatusPolling);
+            callStatusPolling = null;
         }
         
-        // Закрываем WebRTC соединение
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
+        // Останавливаем рингтон
+        stopRingtone();
+        
+        // Скрываем интерфейс входящего звонка
+        hideIncomingCall();
+        
+        // Выходим из полноэкранного режима
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+            console.log('⛶ Выход из полноэкранного режима');
         }
         
-        // Очищаем видео элементы
-        localVideo.srcObject = null;
-        remoteVideo.srcObject = null;
-        fullscreenRemoteVideo.srcObject = null;
-        fullscreenLocalVideo.srcObject = null;
-        
-        // Уведомляем сервер
-        if (currentCall) {
+        // Отправляем завершение на сервер
+        if (currentCall && currentCall.callId) {
             try {
-                await fetch('/call/end', {
+                const response = await fetch('/call/end', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
                     },
                     body: JSON.stringify({
-                        callId: currentCall.id
+                        callId: currentCall.callId
                     })
                 });
+                
+                if (!response.ok) {
+                    console.log('ℹ️ Звонок уже завершен на сервере');
+                }
             } catch (error) {
-                console.log('ℹ️ Звонок уже завершен на сервере');
+                console.log('ℹ️ Ошибка отправки завершения звонка:', error.message);
             }
         }
         
-        // Скрываем интерфейс
+        // Очищаем ресурсы
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+        }
+        
+        if (currentCall && currentCall.stream) {
+            currentCall.stream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Очищаем видео элементы
+        localVideo.srcObject = null;
+        remoteVideo.srcObject = null;
+        
+        // Скрываем интерфейс звонка
         hideCallInterface();
-        exitFullscreen();
         
         // Сбрасываем состояние
-        isMuted = false;
-        isVideoEnabled = true;
-        currentCamera = 'user';
+        currentCall = null;
         incomingCallShown = false;
         processedCallIds.clear();
         
@@ -848,6 +828,48 @@ function startIncomingCallPolling() {
     }, 3000);
 }
 
+// Проверка входящих звонков
+async function checkIncomingCalls() {
+    try {
+        const response = await fetch('/call/incoming', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+            }
+        });
+        
+        if (!response.ok) {
+            console.error('❌ Ошибка получения входящих звонков:', response.status);
+            return;
+        }
+        
+        const incomingCalls = await response.json();
+        
+        for (const callSession of incomingCalls) {
+            if (!incomingCallShown && !processedCallIds.has(callSession.id)) {
+                console.log('📞 Входящий звонок от:', callSession.caller);
+                
+                // Показываем интерфейс входящего звонка
+                showIncomingCall(callSession);
+                
+                // Воспроизводим рингтон
+                playRingtone();
+                
+                // Отмечаем как показанный
+                incomingCallShown = true;
+                processedCallIds.add(callSession.id);
+                
+                // Устанавливаем обработчики кнопок
+                document.getElementById('acceptCallBtn').onclick = () => acceptIncomingCall(callSession);
+                document.getElementById('rejectCallBtn').onclick = () => rejectIncomingCall(callSession.id);
+                
+                break; // Показываем только первый звонок
+            }
+        }
+    } catch (error) {
+        console.error('❌ Ошибка проверки входящих звонков:', error);
+    }
+}
+
 // Показ входящего звонка
 function showIncomingCall(call) {
     if (incomingCallShown) return;
@@ -878,108 +900,117 @@ function hideIncomingCall() {
 }
 
 // Принятие входящего звонка
-async function acceptIncomingCall() {
+async function acceptIncomingCall(callSession) {
     try {
         console.log('✅ Принимаем входящий звонок');
         
-        // Запрашиваем медиа потоки с высоким качеством
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: 48000
-            },
-            video: currentCall.withVideo ? {
-                width: { ideal: 1920, min: 1280 },
-                height: { ideal: 1080, min: 720 },
-                frameRate: { ideal: 30, min: 24 },
-                facingMode: 'user'
-            } : false
-        });
-        
-        localStream = stream;
-        localVideo.srcObject = stream;
-        
         // Создаем WebRTC соединение
-        await createPeerConnection();
+        createPeerConnection();
         
-        // Добавляем локальные треки с приоритетом
+        // Получаем медиапоток
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30 }
+            },
+            audio: true
+        });
+        
+        // Добавляем локальные треки
         stream.getTracks().forEach(track => {
-            const sender = peerConnection.addTrack(track, stream);
-            
-            // Устанавливаем приоритет для видео
-            if (track.kind === 'video') {
-                const params = sender.getParameters();
-                if (params.encodings && params.encodings.length > 0) {
-                    params.encodings[0].maxBitrate = 2500000; // 2.5 Mbps
-                    params.encodings[0].maxFramerate = 30;
-                    sender.setParameters(params);
-                }
-            }
+            peerConnection.addTrack(track, stream);
         });
         
-        // Устанавливаем удаленное описание (offer)
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(currentCall.offer));
+        // Показываем локальное видео
+        localVideo.srcObject = stream;
+        localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
         
-        // Создаем answer с оптимизациями
-        const answer = await peerConnection.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: currentCall.withVideo
-        });
+        // Устанавливаем удаленное описание
+        await peerConnection.setRemoteDescription(callSession.offer);
         
+        // Создаем ответ
+        const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         
-        // Отправляем answer
-        await fetch('/call/answer', {
+        // Отправляем ответ на сервер
+        const response = await fetch('/call/answer', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             },
             body: JSON.stringify({
-                callId: currentCall.id,
+                callId: callSession.id,
                 answer: answer
             })
         });
         
-        // Скрываем входящий звонок и показываем интерфейс
-        hideIncomingCall();
-        showCallInterface();
-        startCallStatusPolling();
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        // Устанавливаем текущий звонок
+        currentCall = {
+            callId: callSession.id,
+            recipient: callSession.caller,
+            isIncoming: true,
+            stream: stream,
+            answerReceived: true
+        };
         
         console.log('✅ Входящий звонок принят');
         
+        // Скрываем интерфейс входящего звонка
+        hideIncomingCall();
+        
+        // Останавливаем рингтон
+        stopRingtone();
+        
+        // Начинаем опрос статуса
+        startCallStatusPolling();
+        
+        // Показываем интерфейс звонка
+        showCallInterface();
+        
     } catch (error) {
-        console.error('❌ Ошибка принятия звонка:', error);
+        console.error('❌ Ошибка принятия входящего звонка:', error);
         alert('Ошибка принятия звонка: ' + error.message);
+        endCall();
     }
 }
 
 // Отклонение входящего звонка
-async function rejectIncomingCall() {
+async function rejectIncomingCall(callId) {
     try {
-        console.log('❌ Отклоняем входящий звонок');
+        console.log('❌ Отклоняем входящий звонок:', callId);
         
-        // Отправляем отклонение
-        await fetch('/call/reject', {
+        // Отправляем отклонение на сервер
+        const response = await fetch('/call/reject', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             },
             body: JSON.stringify({
-                callId: currentCall.id
+                callId: callId
             })
         });
         
+        if (!response.ok) {
+            console.error('❌ Ошибка отклонения звонка:', response.status);
+        }
+        
+        // Скрываем интерфейс входящего звонка
         hideIncomingCall();
-        currentCall = null;
+        
+        // Останавливаем рингтон
+        stopRingtone();
         
         console.log('✅ Входящий звонок отклонен');
         
     } catch (error) {
-        console.error('❌ Ошибка отклонения звонка:', error);
+        console.error('❌ Ошибка отклонения входящего звонка:', error);
     }
 }
 
@@ -1096,6 +1127,20 @@ async function clearAllCalls() {
     } catch (error) {
         console.error('❌ Ошибка очистки звонков:', error);
         alert('❌ Ошибка очистки звонков: ' + error.message);
+    }
+}
+
+// Обработка ответа на звонок
+async function handleCallAnswer(answer) {
+    try {
+        console.log('📞 Получен ответ на звонок');
+        
+        if (peerConnection) {
+            await peerConnection.setRemoteDescription(answer);
+            console.log('✅ Удаленное описание установлено');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка обработки ответа на звонок:', error);
     }
 }
 
