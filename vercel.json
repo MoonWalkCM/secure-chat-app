@@ -2,18 +2,27 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.js",
+      "src": "server-vercel.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
+      "src": "/socket.io/(.*)",
+      "dest": "server-vercel.js"
+    },
+    {
       "src": "/api/(.*)",
-      "dest": "/api/index.js"
+      "dest": "server-vercel.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/api/index.js"
+      "dest": "server-vercel.js"
     }
-  ]
+  ],
+  "functions": {
+    "server-vercel.js": {
+      "maxDuration": 30
+    }
+  }
 } 
