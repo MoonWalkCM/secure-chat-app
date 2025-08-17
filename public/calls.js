@@ -926,8 +926,21 @@ async function acceptIncomingCall(callSession) {
         localVideo.srcObject = stream;
         localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
         
+        // Парсим offer из callSession
+        let offer;
+        if (typeof callSession.offer === 'string') {
+            try {
+                offer = JSON.parse(callSession.offer);
+            } catch (e) {
+                console.error('❌ Ошибка парсинга offer:', e);
+                throw new Error('Неверный формат offer');
+            }
+        } else {
+            offer = callSession.offer;
+        }
+        
         // Устанавливаем удаленное описание
-        await peerConnection.setRemoteDescription(callSession.offer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         
         // Создаем ответ
         const answer = await peerConnection.createAnswer();
@@ -1136,7 +1149,20 @@ async function handleCallAnswer(answer) {
         console.log('📞 Получен ответ на звонок');
         
         if (peerConnection) {
-            await peerConnection.setRemoteDescription(answer);
+            // Парсим answer если он пришел как строка
+            let answerObj;
+            if (typeof answer === 'string') {
+                try {
+                    answerObj = JSON.parse(answer);
+                } catch (e) {
+                    console.error('❌ Ошибка парсинга answer:', e);
+                    throw new Error('Неверный формат answer');
+                }
+            } else {
+                answerObj = answer;
+            }
+            
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answerObj));
             console.log('✅ Удаленное описание установлено');
         }
     } catch (error) {
