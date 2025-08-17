@@ -8,8 +8,7 @@ let isMuted = false;
 let isVideoEnabled = true;
 let isFullscreen = false;
 let currentCamera = 'user'; // 'user' или 'environment'
-let callStatusPolling = null;
-let incomingCallPolling = null;
+let socket = null;
 let pingInterval = null;
 
 // Элементы DOM
@@ -70,17 +69,86 @@ async function initializeApp() {
             console.log('👤 Текущий пользователь:', currentUser.login);
         }
 
+        // Инициализируем WebSocket
+        initializeWebSocket(token);
+
         // Загружаем контакты
         await loadContacts();
         
-        // Запускаем опросы
-        startIncomingCallPolling();
+        // Запускаем ping
         startPingInterval();
         
         console.log('✅ Приложение инициализировано');
     } catch (error) {
         console.error('❌ Ошибка инициализации:', error);
     }
+}
+
+// Инициализация WebSocket
+function initializeWebSocket(token) {
+    // Определяем URL для WebSocket
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    console.log('🔌 Подключаемся к WebSocket:', wsUrl);
+    
+    socket = io(wsUrl);
+    
+    // Обработчики WebSocket событий
+    socket.on('connect', () => {
+        console.log('✅ WebSocket подключен');
+        // Аутентифицируем пользователя
+        socket.emit('authenticate', { token: token });
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('❌ WebSocket отключен');
+    });
+    
+    socket.on('connect_error', (error) => {
+        console.error('❌ Ошибка подключения WebSocket:', error);
+    });
+    
+    // Обработчики звонков
+    socket.on('call:incoming', (data) => {
+        console.log('📞 Входящий звонок через WebSocket:', data);
+        showIncomingCall(data);
+    });
+    
+    socket.on('call:offered', (data) => {
+        console.log('✅ Звонок предложен:', data);
+        currentCall = {
+            id: data.callId,
+            status: 'pending'
+        };
+        showCallInterface();
+        updateCallStatus('Ожидание ответа...');
+    });
+    
+    socket.on('call:answered', (data) => {
+        console.log('✅ Звонок принят:', data);
+        if (peerConnection && peerConnection.signalingState !== 'stable') {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+        updateCallStatus('Подключено');
+    });
+    
+    socket.on('call:rejected', (data) => {
+        console.log('❌ Звонок отклонен:', data);
+        endCall();
+    });
+    
+    socket.on('call:ended', (data) => {
+        console.log('📞 Звонок завершен:', data);
+        endCall();
+    });
+    
+    socket.on('call:ice-candidate', (data) => {
+        console.log('🧊 Получен ICE кандидат:', data);
+        if (peerConnection && data.from !== currentUser.login) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+    });
 }
 
 // Настройка обработчиков событий
@@ -220,36 +288,14 @@ async function startVideoCall(recipient) {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         
-        // Отправляем offer на сервер
-        const response = await fetch('/call/offer', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            },
-            body: JSON.stringify({
-                recipient: recipient,
-                offer: offer,
-                withVideo: true
-            })
+        // Отправляем offer через WebSocket
+        socket.emit('call:offer', {
+            recipient: recipient,
+            offer: offer,
+            withVideo: true
         });
         
-        if (!response.ok) {
-            throw new Error('Ошибка инициации звонка');
-        }
-        
-        const data = await response.json();
-        currentCall = {
-            id: data.callId,
-            recipient: recipient,
-            type: 'video'
-        };
-        
-        // Показываем интерфейс звонка
-        showCallInterface();
-        startCallStatusPolling();
-        
-        console.log('✅ Видеозвонок инициирован:', data.callId);
+        console.log('✅ Видеозвонок инициирован через WebSocket');
         
     } catch (error) {
         console.error('❌ Ошибка начала видеозвонка:', error);
@@ -282,36 +328,14 @@ async function startAudioCall(recipient) {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         
-        // Отправляем offer на сервер
-        const response = await fetch('/call/offer', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            },
-            body: JSON.stringify({
-                recipient: recipient,
-                offer: offer,
-                withVideo: false
-            })
+        // Отправляем offer через WebSocket
+        socket.emit('call:offer', {
+            recipient: recipient,
+            offer: offer,
+            withVideo: false
         });
         
-        if (!response.ok) {
-            throw new Error('Ошибка инициации звонка');
-        }
-        
-        const data = await response.json();
-        currentCall = {
-            id: data.callId,
-            recipient: recipient,
-            type: 'audio'
-        };
-        
-        // Показываем интерфейс звонка
-        showCallInterface();
-        startCallStatusPolling();
-        
-        console.log('✅ Аудиозвонок инициирован:', data.callId);
+        console.log('✅ Аудиозвонок инициирован через WebSocket');
         
     } catch (error) {
         console.error('❌ Ошибка начала аудиозвонка:', error);
@@ -334,8 +358,11 @@ async function createPeerConnection() {
     
     // Обработчики событий
     peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            sendIceCandidate(event.candidate);
+        if (event.candidate && currentCall) {
+            socket.emit('call:ice-candidate', {
+                callId: currentCall.id,
+                candidate: event.candidate
+            });
         }
     };
     
@@ -360,27 +387,6 @@ async function createPeerConnection() {
     };
     
     console.log('🔗 WebRTC соединение создано');
-}
-
-// Отправка ICE кандидата
-async function sendIceCandidate(candidate) {
-    if (!currentCall) return;
-    
-    try {
-        await fetch('/call/ice-candidate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            },
-            body: JSON.stringify({
-                callId: currentCall.id,
-                candidate: candidate
-            })
-        });
-    } catch (error) {
-        console.error('❌ Ошибка отправки ICE кандидата:', error);
-    }
 }
 
 // Показ интерфейса звонка
@@ -541,9 +547,6 @@ async function endCall() {
     try {
         console.log('📞 Завершаем звонок');
         
-        // Останавливаем опросы
-        stopCallStatusPolling();
-        
         // Останавливаем локальные потоки
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
@@ -562,22 +565,9 @@ async function endCall() {
         fullscreenRemoteVideo.srcObject = null;
         fullscreenLocalVideo.srcObject = null;
         
-        // Уведомляем сервер
+        // Уведомляем сервер через WebSocket
         if (currentCall) {
-            try {
-                await fetch('/call/end', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-                    },
-                    body: JSON.stringify({
-                        callId: currentCall.id
-                    })
-                });
-            } catch (error) {
-                console.log('ℹ️ Звонок уже завершен на сервере');
-            }
+            socket.emit('call:end', { callId: currentCall.id });
         }
         
         // Скрываем интерфейс
@@ -596,101 +586,6 @@ async function endCall() {
     }
 }
 
-// Опрос статуса звонка
-function startCallStatusPolling() {
-    if (callStatusPolling) {
-        clearInterval(callStatusPolling);
-    }
-    
-    callStatusPolling = setInterval(async () => {
-        if (!currentCall) return;
-        
-        try {
-            const response = await fetch(`/call/status/${currentCall.id}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-                }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                handleCallStatusUpdate(data.callSession);
-            } else if (response.status === 404) {
-                console.log('ℹ️ Звонок не найден на сервере');
-            }
-        } catch (error) {
-            console.error('❌ Ошибка получения статуса звонка:', error);
-        }
-    }, 2000);
-}
-
-// Остановка опроса статуса
-function stopCallStatusPolling() {
-    if (callStatusPolling) {
-        clearInterval(callStatusPolling);
-        callStatusPolling = null;
-    }
-}
-
-// Обработка обновления статуса звонка
-function handleCallStatusUpdate(callSession) {
-    if (!callSession) return;
-    
-    switch (callSession.status) {
-        case 'active':
-            updateCallStatus('Подключено');
-            break;
-        case 'ended':
-        case 'rejected':
-            endCall();
-            break;
-        case 'pending':
-            updateCallStatus('Ожидание ответа...');
-            break;
-    }
-    
-    // Обрабатываем answer если есть
-    if (callSession.answer && peerConnection && peerConnection.signalingState !== 'stable') {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(callSession.answer));
-    }
-    
-    // Обрабатываем ICE кандидаты
-    if (callSession.iceCandidates && callSession.iceCandidates.length > 0) {
-        callSession.iceCandidates.forEach(candidateData => {
-            if (!candidateData.processed) {
-                peerConnection.addIceCandidate(new RTCIceCandidate(candidateData.candidate));
-                candidateData.processed = true;
-            }
-        });
-    }
-}
-
-// Опрос входящих звонков
-function startIncomingCallPolling() {
-    if (incomingCallPolling) {
-        clearInterval(incomingCallPolling);
-    }
-    
-    incomingCallPolling = setInterval(async () => {
-        try {
-            const response = await fetch('/call/incoming', {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-                }
-            });
-            
-            if (response.ok) {
-                const incomingCalls = await response.json();
-                if (incomingCalls.length > 0) {
-                    showIncomingCall(incomingCalls[0]);
-                }
-            }
-        } catch (error) {
-            console.error('❌ Ошибка получения входящих звонков:', error);
-        }
-    }, 3000);
-}
-
 // Показ входящего звонка
 function showIncomingCall(call) {
     if (incomingCallOverlay.style.display === 'block') return;
@@ -699,6 +594,14 @@ function showIncomingCall(call) {
     
     incomingCallerName.textContent = call.caller;
     incomingCallType.textContent = call.withVideo ? 'Видеозвонок' : 'Аудиозвонок';
+    
+    // Сохраняем данные звонка
+    currentCall = {
+        id: call.callId,
+        caller: call.caller,
+        offer: call.offer,
+        withVideo: call.withVideo
+    };
     
     incomingCallOverlay.style.display = 'flex';
     playRingtone();
@@ -715,24 +618,10 @@ async function acceptIncomingCall() {
     try {
         console.log('✅ Принимаем входящий звонок');
         
-        // Получаем информацию о звонке
-        const response = await fetch('/call/incoming', {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            }
-        });
-        
-        if (!response.ok) return;
-        
-        const incomingCalls = await response.json();
-        if (incomingCalls.length === 0) return;
-        
-        const call = incomingCalls[0];
-        
         // Запрашиваем медиа потоки
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
-            video: call.withVideo ? {
+            video: currentCall.withVideo ? {
                 width: { ideal: 1280 },
                 height: { ideal: 720 },
                 frameRate: { ideal: 30 }
@@ -751,36 +640,21 @@ async function acceptIncomingCall() {
         });
         
         // Устанавливаем удаленное описание (offer)
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(call.offer));
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(currentCall.offer));
         
         // Создаем answer
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         
-        // Отправляем answer
-        await fetch('/call/answer', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            },
-            body: JSON.stringify({
-                callId: call.id,
-                answer: answer
-            })
+        // Отправляем answer через WebSocket
+        socket.emit('call:answer', {
+            callId: currentCall.id,
+            answer: answer
         });
-        
-        // Настраиваем текущий звонок
-        currentCall = {
-            id: call.id,
-            caller: call.caller,
-            type: call.withVideo ? 'video' : 'audio'
-        };
         
         // Скрываем входящий звонок и показываем интерфейс
         hideIncomingCall();
         showCallInterface();
-        startCallStatusPolling();
         
         console.log('✅ Входящий звонок принят');
         
@@ -795,33 +669,12 @@ async function rejectIncomingCall() {
     try {
         console.log('❌ Отклоняем входящий звонок');
         
-        // Получаем информацию о звонке
-        const response = await fetch('/call/incoming', {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            }
-        });
-        
-        if (response.ok) {
-            const incomingCalls = await response.json();
-            if (incomingCalls.length > 0) {
-                const call = incomingCalls[0];
-                
-                // Отправляем отклонение
-                await fetch('/call/reject', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-                    },
-                    body: JSON.stringify({
-                        callId: call.id
-                    })
-                });
-            }
-        }
+        // Отправляем отклонение через WebSocket
+        socket.emit('call:reject', { callId: currentCall.id });
         
         hideIncomingCall();
+        currentCall = null;
+        
         console.log('✅ Входящий звонок отклонен');
         
     } catch (error) {
@@ -912,12 +765,9 @@ window.addEventListener('beforeunload', () => {
     if (pingInterval) {
         clearInterval(pingInterval);
     }
-    if (incomingCallPolling) {
-        clearInterval(incomingCallPolling);
-    }
-    if (callStatusPolling) {
-        clearInterval(callStatusPolling);
+    if (socket) {
+        socket.disconnect();
     }
 });
 
-console.log('🎥 Система видеозвонков загружена'); 
+console.log('🎥 Система видеозвонков с WebSocket загружена'); 
