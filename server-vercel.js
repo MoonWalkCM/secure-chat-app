@@ -104,7 +104,10 @@ app.post('/register', async (req, res) => {
     try {
         const { login, password, email, registration_key } = req.body;
         
+        console.log('Регистрация:', { login, email, registration_key });
+        
         if (users.has(login)) {
+            console.log('Пользователь уже существует:', login);
             return res.status(400).json({ error: 'Пользователь уже существует' });
         }
         
@@ -127,6 +130,8 @@ app.post('/register', async (req, res) => {
         };
         
         users.set(login, user);
+        console.log('Пользователь создан:', login);
+        console.log('Всего пользователей:', users.size);
         
         const token = jwt.sign({ login }, JWT_SECRET, { expiresIn: '24h' });
         
@@ -143,6 +148,7 @@ app.post('/register', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Ошибка регистрации:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -152,13 +158,22 @@ app.post('/login', async (req, res) => {
     try {
         const { login, password } = req.body;
         
+        console.log('Попытка входа:', login);
+        console.log('Всего пользователей в памяти:', users.size);
+        console.log('Доступные пользователи:', Array.from(users.keys()));
+        
         const user = users.get(login);
         if (!user) {
+            console.log('Пользователь не найден:', login);
             return res.status(401).json({ error: 'Неверный логин или пароль' });
         }
         
+        console.log('Пользователь найден, проверяем пароль...');
         const isValidPassword = await bcrypt.compare(password, user.password);
+        console.log('Пароль валиден:', isValidPassword);
+        
         if (!isValidPassword) {
+            console.log('Неверный пароль для пользователя:', login);
             return res.status(401).json({ error: 'Неверный логин или пароль' });
         }
         
@@ -166,6 +181,8 @@ app.post('/login', async (req, res) => {
         
         // Отмечаем пользователя как онлайн
         activeConnections.set(login, { timestamp: Date.now() });
+        
+        console.log('Успешный вход:', login);
         
         res.json({ 
             success: true, 
@@ -180,6 +197,7 @@ app.post('/login', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Ошибка входа:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
