@@ -200,13 +200,19 @@ async function startVideoCall(recipient) {
     try {
         console.log('🎥 Начинаем видеозвонок к', recipient);
         
-        // Запрашиваем медиа потоки
+        // Запрашиваем медиа потоки с высоким качеством
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000
+            },
             video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30 }
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 },
+                frameRate: { ideal: 30, min: 24 },
+                facingMode: 'user'
             }
         });
         
@@ -216,13 +222,27 @@ async function startVideoCall(recipient) {
         // Создаем WebRTC соединение
         await createPeerConnection();
         
-        // Добавляем локальные треки
+        // Добавляем локальные треки с приоритетом
         stream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, stream);
+            const sender = peerConnection.addTrack(track, stream);
+            
+            // Устанавливаем приоритет для видео
+            if (track.kind === 'video') {
+                const params = sender.getParameters();
+                if (params.encodings && params.encodings.length > 0) {
+                    params.encodings[0].maxBitrate = 2500000; // 2.5 Mbps
+                    params.encodings[0].maxFramerate = 30;
+                    sender.setParameters(params);
+                }
+            }
         });
         
-        // Создаем offer
-        const offer = await peerConnection.createOffer();
+        // Создаем offer с оптимизациями
+        const offer = await peerConnection.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
+        
         await peerConnection.setLocalDescription(offer);
         
         // Отправляем offer на сервер
@@ -330,9 +350,14 @@ async function createPeerConnection() {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
         ],
-        iceCandidatePoolSize: 10
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        iceTransportPolicy: 'all'
     };
     
     peerConnection = new RTCPeerConnection(configuration);
@@ -340,6 +365,7 @@ async function createPeerConnection() {
     // Обработчики событий
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log('🧊 Отправляем ICE кандидат:', event.candidate.type);
             sendIceCandidate(event.candidate);
         }
     };
@@ -347,10 +373,28 @@ async function createPeerConnection() {
     peerConnection.onconnectionstatechange = () => {
         console.log('🔗 Состояние соединения:', peerConnection.connectionState);
         updateCallStatus(peerConnection.connectionState);
+        
+        if (peerConnection.connectionState === 'connected') {
+            console.log('✅ WebRTC соединение установлено!');
+            updateCallStatus('Подключено');
+        } else if (peerConnection.connectionState === 'failed') {
+            console.log('❌ WebRTC соединение не удалось');
+            updateCallStatus('Ошибка соединения');
+        }
     };
     
     peerConnection.oniceconnectionstatechange = () => {
         console.log('🧊 Состояние ICE:', peerConnection.iceConnectionState);
+        
+        if (peerConnection.iceConnectionState === 'connected') {
+            console.log('✅ ICE соединение установлено!');
+        } else if (peerConnection.iceConnectionState === 'failed') {
+            console.log('❌ ICE соединение не удалось');
+        }
+    };
+    
+    peerConnection.onicegatheringstatechange = () => {
+        console.log('🧊 Состояние сбора ICE:', peerConnection.iceGatheringState);
     };
     
     peerConnection.ontrack = (event) => {
@@ -359,9 +403,31 @@ async function createPeerConnection() {
         remoteVideo.srcObject = remoteStream;
         fullscreenRemoteVideo.srcObject = remoteStream;
         
-        // Принудительное воспроизведение
-        remoteVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения:', e));
-        fullscreenRemoteVideo.play().catch(e => console.log('⚠️ Ошибка полноэкранного воспроизведения:', e));
+        // Принудительное воспроизведение с повторными попытками
+        const playVideo = async () => {
+            try {
+                await remoteVideo.play();
+                console.log('✅ Удаленное видео воспроизводится');
+            } catch (error) {
+                console.log('⚠️ Ошибка воспроизведения удаленного видео:', error);
+                // Повторная попытка через 1 секунду
+                setTimeout(playVideo, 1000);
+            }
+        };
+        
+        const playFullscreenVideo = async () => {
+            try {
+                await fullscreenRemoteVideo.play();
+                console.log('✅ Полноэкранное видео воспроизводится');
+            } catch (error) {
+                console.log('⚠️ Ошибка полноэкранного воспроизведения:', error);
+                // Повторная попытка через 1 секунду
+                setTimeout(playFullscreenVideo, 1000);
+            }
+        };
+        
+        playVideo();
+        playFullscreenVideo();
     };
     
     console.log('🔗 WebRTC соединение создано');
@@ -371,21 +437,44 @@ async function createPeerConnection() {
 async function sendIceCandidate(candidate) {
     if (!currentCall) return;
     
-    try {
-        await fetch('/call/ice-candidate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-            },
-            body: JSON.stringify({
-                callId: currentCall.id,
-                candidate: candidate
-            })
-        });
-    } catch (error) {
-        console.error('❌ Ошибка отправки ICE кандидата:', error);
-    }
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    const sendWithRetry = async () => {
+        try {
+            const response = await fetch('/call/ice-candidate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                },
+                body: JSON.stringify({
+                    callId: currentCall.id,
+                    candidate: candidate
+                })
+            });
+            
+            if (response.ok) {
+                console.log('✅ ICE кандидат отправлен успешно');
+            } else if (response.status === 404) {
+                console.log('ℹ️ Звонок не найден на сервере для ICE кандидата');
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            console.error('❌ Ошибка отправки ICE кандидата:', error);
+            
+            if (retryCount < maxRetries) {
+                retryCount++;
+                console.log(`🔄 Повторная попытка ${retryCount}/${maxRetries} через 1 секунду...`);
+                setTimeout(sendWithRetry, 1000);
+            } else {
+                console.error('❌ Не удалось отправить ICE кандидат после всех попыток');
+            }
+        }
+    };
+    
+    sendWithRetry();
 }
 
 // Показ интерфейса звонка
@@ -624,11 +713,15 @@ function startCallStatusPolling() {
                 handleCallStatusUpdate(data.callSession);
             } else if (response.status === 404) {
                 console.log('ℹ️ Звонок не найден на сервере, но продолжаем локально');
+                // Не завершаем звонок сразу, даем время на восстановление
+            } else {
+                console.error('❌ Ошибка сервера при получении статуса:', response.status);
             }
         } catch (error) {
             console.error('❌ Ошибка получения статуса звонка:', error);
+            // Не завершаем звонок при сетевых ошибках
         }
-    }, 2000);
+    }, 3000); // Увеличиваем интервал до 3 секунд
 }
 
 // Остановка опроса статуса
@@ -736,13 +829,19 @@ async function acceptIncomingCall() {
     try {
         console.log('✅ Принимаем входящий звонок');
         
-        // Запрашиваем медиа потоки
+        // Запрашиваем медиа потоки с высоким качеством
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000
+            },
             video: currentCall.withVideo ? {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30 }
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 },
+                frameRate: { ideal: 30, min: 24 },
+                facingMode: 'user'
             } : false
         });
         
@@ -752,16 +851,30 @@ async function acceptIncomingCall() {
         // Создаем WebRTC соединение
         await createPeerConnection();
         
-        // Добавляем локальные треки
+        // Добавляем локальные треки с приоритетом
         stream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, stream);
+            const sender = peerConnection.addTrack(track, stream);
+            
+            // Устанавливаем приоритет для видео
+            if (track.kind === 'video') {
+                const params = sender.getParameters();
+                if (params.encodings && params.encodings.length > 0) {
+                    params.encodings[0].maxBitrate = 2500000; // 2.5 Mbps
+                    params.encodings[0].maxFramerate = 30;
+                    sender.setParameters(params);
+                }
+            }
         });
         
         // Устанавливаем удаленное описание (offer)
         await peerConnection.setRemoteDescription(new RTCSessionDescription(currentCall.offer));
         
-        // Создаем answer
-        const answer = await peerConnection.createAnswer();
+        // Создаем answer с оптимизациями
+        const answer = await peerConnection.createAnswer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: currentCall.withVideo
+        });
+        
         await peerConnection.setLocalDescription(answer);
         
         // Отправляем answer
@@ -819,42 +932,58 @@ async function rejectIncomingCall() {
 
 // Воспроизведение звонка
 function playRingtone() {
-    // Создаем простой звук звонка
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
-    
-    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1);
-    gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.5);
-    
-    // Повторяем каждые 2 секунды
-    window.ringtoneInterval = setInterval(() => {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
+    try {
+        // Создаем AudioContext только при необходимости
+        if (!window.audioContext) {
+            window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        // Возобновляем контекст если приостановлен
+        if (window.audioContext.state === 'suspended') {
+            window.audioContext.resume();
+        }
+        
+        const oscillator = window.audioContext.createOscillator();
+        const gainNode = window.audioContext.createGain();
         
         oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+        gainNode.connect(window.audioContext.destination);
         
-        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-        oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+        oscillator.frequency.setValueAtTime(800, window.audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(600, window.audioContext.currentTime + 0.5);
         
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1);
-        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+        gainNode.gain.setValueAtTime(0, window.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, window.audioContext.currentTime + 0.1);
+        gainNode.gain.linearRampToValueAtTime(0, window.audioContext.currentTime + 0.5);
         
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.5);
-    }, 2000);
+        oscillator.start(window.audioContext.currentTime);
+        oscillator.stop(window.audioContext.currentTime + 0.5);
+        
+        // Повторяем каждые 2 секунды
+        window.ringtoneInterval = setInterval(() => {
+            if (window.audioContext.state === 'suspended') {
+                window.audioContext.resume();
+            }
+            
+            const oscillator = window.audioContext.createOscillator();
+            const gainNode = window.audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(window.audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(800, window.audioContext.currentTime);
+            oscillator.frequency.setValueAtTime(600, window.audioContext.currentTime + 0.5);
+            
+            gainNode.gain.setValueAtTime(0, window.audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.3, window.audioContext.currentTime + 0.1);
+            gainNode.gain.linearRampToValueAtTime(0, window.audioContext.currentTime + 0.5);
+            
+            oscillator.start(window.audioContext.currentTime);
+            oscillator.stop(window.audioContext.currentTime + 0.5);
+        }, 2000);
+    } catch (error) {
+        console.error('❌ Ошибка воспроизведения звонка:', error);
+    }
 }
 
 // Остановка звонка
