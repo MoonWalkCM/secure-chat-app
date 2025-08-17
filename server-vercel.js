@@ -520,13 +520,37 @@ app.post('/call/offer', (req, res) => {
             return res.status(404).json({ error: 'Получатель не найден' });
         }
         
+        // Очищаем старые звонки (старше 5 минут)
+        const now = Date.now();
+        for (const [callId, session] of callSessions.entries()) {
+            if (now - session.timestamp > 300000) { // 5 минут
+                console.log('Удаляем старый звонок:', callId);
+                callSessions.delete(callId);
+            }
+        }
+        
         // Проверяем, не занят ли получатель
         const recipientSession = Array.from(callSessions.values()).find(session => 
-            session.participants.includes(recipient) && session.status === 'active'
+            session.participants.includes(recipient) && 
+            (session.status === 'active' || session.status === 'pending') &&
+            (now - session.timestamp) < 60000 // Только звонки младше 1 минуты
         );
         
         if (recipientSession) {
+            console.log('Получатель занят:', recipient, 'занят звонком:', recipientSession.id);
             return res.status(409).json({ error: 'Пользователь занят другим звонком' });
+        }
+        
+        // Проверяем, не инициировал ли звонящий уже звонок
+        const callerSession = Array.from(callSessions.values()).find(session => 
+            session.caller === caller.login && 
+            (session.status === 'active' || session.status === 'pending') &&
+            (now - session.timestamp) < 60000 // Только звонки младше 1 минуты
+        );
+        
+        if (callerSession) {
+            console.log('Звонящий уже в звонке:', caller.login, 'звонок:', callerSession.id);
+            return res.status(409).json({ error: 'У вас уже есть активный звонок' });
         }
         
         const callId = Date.now().toString();
@@ -538,10 +562,12 @@ app.post('/call/offer', (req, res) => {
             withVideo: withVideo,
             status: 'pending',
             participants: [caller.login, recipient],
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            iceCandidates: []
         };
         
         callSessions.set(callId, callSession);
+        console.log('Создан новый звонок:', callId, 'от', caller.login, 'к', recipient);
         
         res.json({ 
             success: true, 
@@ -549,6 +575,7 @@ app.post('/call/offer', (req, res) => {
             message: 'Звонок инициирован'
         });
     } catch (error) {
+        console.error('Ошибка инициации звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -580,12 +607,14 @@ app.post('/call/answer', (req, res) => {
         
         callSession.answer = answer;
         callSession.status = 'active';
+        console.log('Звонок принят:', callId, 'пользователем:', answerer.login);
         
         res.json({ 
             success: true, 
             message: 'Звонок принят'
         });
     } catch (error) {
+        console.error('Ошибка ответа на звонок:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -616,12 +645,14 @@ app.post('/call/reject', (req, res) => {
         }
         
         callSession.status = 'rejected';
+        console.log('Звонок отклонен:', callId, 'пользователем:', rejecter.login);
         
         res.json({ 
             success: true, 
             message: 'Звонок отклонен'
         });
     } catch (error) {
+        console.error('Ошибка отклонения звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -644,6 +675,7 @@ app.post('/call/end', (req, res) => {
         const callSession = callSessions.get(callId);
         
         if (!callSession) {
+            console.log('Звонок не найден для завершения:', callId);
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
@@ -652,12 +684,14 @@ app.post('/call/end', (req, res) => {
         }
         
         callSession.status = 'ended';
+        console.log('Звонок завершен:', callId, 'пользователем:', ender.login);
         
         res.json({ 
             success: true, 
             message: 'Звонок завершен'
         });
     } catch (error) {
+        console.error('Ошибка завершения звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -694,14 +728,18 @@ app.post('/call/ice-candidate', (req, res) => {
         callSession.iceCandidates.push({
             from: sender.login,
             candidate: candidate,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            processed: false
         });
+        
+        console.log('ICE кандидат получен от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
         
         res.json({ 
             success: true, 
             message: 'ICE кандидат получен'
         });
     } catch (error) {
+        console.error('Ошибка обработки ICE кандидата:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -724,6 +762,7 @@ app.get('/call/status/:callId', (req, res) => {
         const callSession = callSessions.get(callId);
         
         if (!callSession) {
+            console.log('Звонок не найден для статуса:', callId);
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
@@ -745,6 +784,7 @@ app.get('/call/status/:callId', (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Ошибка получения статуса звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -768,6 +808,10 @@ app.get('/call/incoming', (req, res) => {
             session.recipient === user.login && session.status === 'pending'
         );
         
+        if (userCalls.length > 0) {
+            console.log('Входящие звонки для', user.login, ':', userCalls.length);
+        }
+        
         res.json(userCalls);
     } catch (error) {
         console.error('Ошибка получения входящих звонков:', error);
@@ -778,12 +822,75 @@ app.get('/call/incoming', (req, res) => {
 // Очистка старых звонков (каждые 5 минут)
 setInterval(() => {
     const now = Date.now();
+    let cleanedCount = 0;
     for (const [callId, session] of callSessions.entries()) {
         if (now - session.timestamp > 300000) { // 5 минут
             callSessions.delete(callId);
+            cleanedCount++;
         }
     }
+    if (cleanedCount > 0) {
+        console.log(`Очищено ${cleanedCount} старых звонков`);
+    }
 }, 300000);
+
+// Принудительная очистка всех звонков (для отладки)
+app.post('/call/clear-all', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        const count = callSessions.size;
+        callSessions.clear();
+        console.log(`Пользователь ${user.login} очистил все звонки (${count} шт.)`);
+        
+        res.json({ success: true, message: `Очищено ${count} звонков` });
+    } catch (error) {
+        console.error('Ошибка очистки звонков:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Получение информации о звонках (для отладки)
+app.get('/call/debug', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        const calls = Array.from(callSessions.values()).map(session => ({
+            id: session.id,
+            caller: session.caller,
+            recipient: session.recipient,
+            status: session.status,
+            timestamp: session.timestamp,
+            age: Date.now() - session.timestamp
+        }));
+        
+        res.json({ 
+            totalCalls: callSessions.size,
+            calls: calls
+        });
+    } catch (error) {
+        console.error('Ошибка получения информации о звонках:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
 
 // === ДОПОЛНИТЕЛЬНЫЕ ЭНДПОИНТЫ ===
 
