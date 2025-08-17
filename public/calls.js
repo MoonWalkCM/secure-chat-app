@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 async function initializeCalls() {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jwtToken');
     if (!token) {
         window.location.href = '/';
         return;
@@ -41,7 +41,7 @@ async function loadContacts() {
     try {
         const response = await fetch('/contacts', {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             }
         });
         
@@ -135,7 +135,7 @@ async function startCall(recipient, withVideo) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             },
             body: JSON.stringify({
                 recipient: recipient,
@@ -190,7 +190,7 @@ async function sendIceCandidate(candidate) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             },
             body: JSON.stringify({
                 callId: currentCall.id,
@@ -258,7 +258,7 @@ async function acceptCall() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
                 },
                 body: JSON.stringify({
                     callId: currentCall.id,
@@ -287,7 +287,7 @@ async function rejectCall() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             },
             body: JSON.stringify({
                 callId: currentCall.id
@@ -308,7 +308,7 @@ async function endCall() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
                 },
                 body: JSON.stringify({
                     callId: currentCall.id
@@ -347,7 +347,7 @@ async function getCallStatus(callId) {
     try {
         const response = await fetch(`/call/status/${callId}`, {
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
             }
         });
         
