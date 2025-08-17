@@ -571,6 +571,13 @@ app.post('/call/offer', async (req, res) => {
         }
         
         const callId = Date.now().toString();
+        
+        // Проверяем, что offer имеет правильную структуру
+        if (!offer || !offer.type || !offer.sdp) {
+            console.error('❌ Неверный формат offer от клиента:', offer);
+            return res.status(400).json({ error: 'Неверный формат offer' });
+        }
+        
         const callSession = {
             id: callId,
             caller: caller.login,
@@ -685,6 +692,12 @@ app.post('/call/answer', async (req, res) => {
         if (callSession.recipient !== answerer.login) {
             console.log('🚫 Пользователь не авторизован для принятия звонка:', answerer.login);
             return res.status(403).json({ error: 'Не авторизован для ответа на этот звонок' });
+        }
+        
+        // Проверяем, что answer имеет правильную структуру
+        if (!answer || !answer.type || !answer.sdp) {
+            console.error('❌ Неверный формат answer от клиента:', answer);
+            return res.status(400).json({ error: 'Неверный формат answer' });
         }
         
         // Обновляем звонок
@@ -919,7 +932,14 @@ app.get('/call/status/:callId', async (req, res) => {
                 withVideo: callSession.withVideo,
                 offer: callSession.offer ? (() => {
                     try {
-                        return JSON.parse(callSession.offer);
+                        const parsed = JSON.parse(callSession.offer);
+                        // Дополнительная проверка структуры
+                        if (parsed && parsed.type && parsed.sdp) {
+                            return parsed;
+                        } else {
+                            console.error('❌ Неверная структура offer после парсинга:', parsed);
+                            return null;
+                        }
                     } catch (e) {
                         console.error('❌ Ошибка парсинга offer:', e);
                         return null;
@@ -927,7 +947,14 @@ app.get('/call/status/:callId', async (req, res) => {
                 })() : null,
                 answer: callSession.answer ? (() => {
                     try {
-                        return JSON.parse(callSession.answer);
+                        const parsed = JSON.parse(callSession.answer);
+                        // Дополнительная проверка структуры
+                        if (parsed && parsed.type && parsed.sdp) {
+                            return parsed;
+                        } else {
+                            console.error('❌ Неверная структура answer после парсинга:', parsed);
+                            return null;
+                        }
                     } catch (e) {
                         console.error('❌ Ошибка парсинга answer:', e);
                         return null;
