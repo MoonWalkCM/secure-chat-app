@@ -3,17 +3,8 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
 
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
 
 // Секреты
 const JWT_SECRET = process.env.JWT_SECRET || 'mwlauncher-secret-key-2024-fixed';
@@ -24,7 +15,6 @@ const messages = new Map();
 const contacts = new Map();
 const activeConnections = new Map(); // Для отслеживания онлайн статуса
 const callSessions = new Map(); // Для управления звонками
-const socketUsers = new Map(); // Для связи socket.id с пользователями
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
@@ -530,11 +520,11 @@ app.post('/call/offer', (req, res) => {
             return res.status(404).json({ error: 'Получатель не найден' });
         }
         
-        // Очищаем только очень старые звонки (старше 30 минут)
+        // Очищаем старые звонки (старше 10 минут)
         const now = Date.now();
         for (const [callId, session] of callSessions.entries()) {
-            if (now - session.timestamp > 1800000) { // 30 минут
-                console.log('🗑️ Удаляем очень старый звонок:', callId);
+            if (now - session.timestamp > 600000) { // 10 минут
+                console.log('🗑️ Удаляем старый звонок:', callId);
                 callSessions.delete(callId);
             }
         }
@@ -844,13 +834,13 @@ app.get('/call/incoming', (req, res) => {
     }
 });
 
-// Очистка старых звонков (каждые 30 минут)
+// Очистка старых звонков (каждые 10 минут)
 setInterval(() => {
     const now = Date.now();
     let cleanedCount = 0;
     for (const [callId, session] of callSessions.entries()) {
-        // Удаляем только очень старые звонки (старше 60 минут)
-        if (now - session.timestamp > 3600000) { // 60 минут
+        // Удаляем только очень старые звонки (старше 30 минут)
+        if (now - session.timestamp > 1800000) { // 30 минут
             callSessions.delete(callId);
             cleanedCount++;
             console.log('🗑️ Автоматически удален старый звонок:', callId);
@@ -859,7 +849,7 @@ setInterval(() => {
     if (cleanedCount > 0) {
         console.log(`🧹 Автоматически очищено ${cleanedCount} старых звонков`);
     }
-}, 1800000); // Каждые 30 минут
+}, 600000); // Каждые 10 минут
 
 // Принудительная очистка всех звонков (для отладки)
 app.post('/call/clear-all', (req, res) => {
@@ -1049,4 +1039,4 @@ app.post('/ping', (req, res) => {
 // Создаем тестовых пользователей при первом запуске
 createTestUsers();
 
-module.exports = server; 
+module.exports = app; 
