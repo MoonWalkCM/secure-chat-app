@@ -1,0 +1,7 @@
+tunnel: 93d9fee9-f2d3-45b4-b635-3a3bb69cccc2
+credentials-file: C:\Users\rasau\.cloudflared\93d9fee9-f2d3-45b4-b635-3a3bb69cccc2.json
+
+ingress:
+  - hostname: chat.fixsation.ru
+    service: http://localhost:3000
+  - service: http_status:404

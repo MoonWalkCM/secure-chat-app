@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="register-style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="register.js" defer></script>
+</head>
+<body>
+    <div class="wrapper">
+        <h1 data-lang-key="registerTitle">Register</h1>
+        <div class="notification" id="notification" style="display: none;">
+            <i class="fas fa-exclamation-circle"></i>
+            <span id="notification-text"></span>
+        </div>
+        <div class="input-box">
+            <input type="text" id="login" placeholder="Login" data-lang-key="loginPlaceholder">
+            <i class="fas fa-user"></i>
+        </div>
+        <div class="input-box">
+            <input type="email" id="email" placeholder="Email" data-lang-key="emailPlaceholder">
+            <i class="fas fa-envelope"></i>
+        </div>
+        <div class="input-box">
+            <input type="password" id="password" placeholder="Password" data-lang-key="passwordPlaceholder">
+            <i class="fas fa-lock"></i>
+        </div>
+        <div class="input-box">
+            <input type="text" id="key" placeholder="Registration Key" data-lang-key="keyPlaceholder">
+            <i class="fas fa-key"></i>
+        </div>
+        <button class="btn" id="register-btn" data-lang-key="registerButton">Register</button>
+        <div class="hint-menu">
+            <div class="hint-item active" data-lang-key="hint1">Use a strong password</div>
+            <div class="hint-item" data-lang-key="hint2">Include numbers and symbols</div>
+            <div class="hint-item" data-lang-key="hint3">Avoid common words</div>
+        </div>
+        <p><a href="index.html" data-lang-key="loginLink">Already have an account? Login</a></p>
+    </div>
+</body>
+</html>

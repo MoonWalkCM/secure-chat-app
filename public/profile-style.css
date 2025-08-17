@@ -1,0 +1,531 @@
+/* Основные стили */
+:root {
+    --primary-color: #82AAFF;
+}
+
+body {
+    margin: 0;
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #2a5298, #1e3c72);
+    color: #fff;
+}
+
+.top-bar {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    z-index: 1000;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.navigation {
+    display: flex;
+    gap: 15px;
+}
+
+.nav-button {
+    color: #fff;
+    text-decoration: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    transition: background 0.3s;
+}
+
+.nav-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-button.active {
+    background: var(--primary-color);
+}
+
+.main-content {
+    max-width: 1200px;
+    margin: 80px auto 20px;
+    padding: 20px;
+}
+
+.notification {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 75, 75, 0.9);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    display: none;
+    transition: opacity 0.3s ease;
+    z-index: 2000;
+}
+
+.notification.show {
+    display: block;
+    opacity: 1;
+}
+
+.notification:not(.show) {
+    opacity: 0;
+}
+
+.profile-section,
+.settings-section {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+h1 {
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+
+p {
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.setting-card {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 20px;
+    border-radius: 10px;
+    transition: transform 0.3s ease;
+}
+
+.setting-card:hover {
+    transform: translateY(-5px);
+}
+
+.setting-card h3 {
+    font-size: 20px;
+    margin-bottom: 10px;
+}
+
+.setting-card p {
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.input-box {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.input-box input {
+    width: 100%;
+    padding: 12px 12px 12px 44px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 16px;
+    touch-action: manipulation;
+}
+
+.input-box input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.input-box i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--primary-color);
+    font-size: 18px;
+}
+
+.btn {
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.3s, transform 0.2s;
+    width: 100%;
+    margin-top: 12px;
+    min-height: 44px; /* Accessible touch target */
+}
+
+.btn:hover {
+    background: darken(var(--primary-color), 10%);
+    transform: translateY(-2px);
+}
+
+.logout-btn {
+    background: #ff4b4b;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    margin-top: 12px;
+    transition: background 0.3s, transform 0.2s;
+    min-height: 44px; /* Accessible touch target */
+}
+
+.logout-btn:hover {
+    background: #d43f3f;
+    transform: translateY(-2px);
+}
+
+.color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.color-swatch {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--swatch-color);
+    cursor: pointer;
+    transition: transform 0.3s;
+    border: 2px solid transparent;
+}
+
+.color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.color-swatch.theme-swatch {
+    background: linear-gradient(135deg, var(--base-color, #2a5298), var(--gradient-color, #1e3c72));
+}
+
+.color-swatch.theme-swatch[data-base] {
+    --base-color: attr(data-base);
+    --gradient-color: attr(data-gradient);
+    background: linear-gradient(135deg, var(--base-color), var(--gradient-color));
+}
+
+.color-swatch.active {
+    border: 2px solid #fff;
+}
+
+.language-toggle {
+    display: flex;
+    gap: 10px;
+}
+
+.toggle-btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s;
+    min-height: 44px; /* Accessible touch target */
+}
+
+.toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.toggle-btn.active {
+    background: var(--primary-color);
+}
+
+.ram-slider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.slider-value {
+    font-size: 14px;
+}
+
+.keys-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.keys-list.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.key-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.key-item span {
+    font-size: 14px;
+}
+
+#keys-list h4 {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+/* Медиа-запросы для адаптации под мобильные устройства */
+@media (max-width: 768px) {
+    body {
+        padding-top: 60px;
+    }
+
+    .top-bar {
+        padding: 8px 15px;
+        height: 60px;
+    }
+
+    .logo {
+        font-size: 20px;
+    }
+
+    .navigation {
+        gap: 10px;
+    }
+
+    .nav-button {
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+
+    .main-content {
+        margin: 70px 10px 10px;
+        padding: 15px;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+
+    p {
+        font-size: 14px;
+        margin-bottom: 15px;
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .setting-card {
+        padding: 15px;
+    }
+
+    .setting-card h3 {
+        font-size: 18px;
+    }
+
+    .setting-card p {
+        font-size: 13px;
+    }
+
+    .input-box input {
+        padding: 10px 10px 10px 40px;
+        font-size: 14px;
+    }
+
+    .input-box i {
+        left: 10px;
+        font-size: 16px;
+    }
+
+    .btn, .logout-btn {
+        padding: 10px 15px;
+        font-size: 14px;
+        min-height: 44px; /* Ensure touch accessibility */
+    }
+
+    .color-swatch {
+        width: 40px;
+        height: 40px;
+    }
+
+    .toggle-btn {
+        padding: 10px 15px;
+        font-size: 14px;
+        min-height: 44px;
+    }
+
+    .slider {
+        height: 5px;
+    }
+
+    .slider::-webkit-slider-thumb,
+    .slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+    }
+
+    .slider-value {
+        font-size: 13px;
+    }
+
+    .key-item {
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+
+    .key-item span {
+        font-size: 13px;
+    }
+
+    #keys-list h4 {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    body {
+        padding-top: 50px;
+    }
+
+    .top-bar {
+        padding: 8px 10px;
+        height: 50px;
+    }
+
+    .logo {
+        font-size: 18px;
+    }
+
+    .nav-button {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    .main-content {
+        margin: 60px 5px 5px;
+        padding: 10px;
+    }
+
+    h1 {
+        font-size: 20px;
+    }
+
+    p {
+        font-size: 13px;
+        margin-bottom: 12px;
+    }
+
+    .setting-card {
+        padding: 12px;
+    }
+
+    .setting-card h3 {
+        font-size: 16px;
+    }
+
+    .setting-card p {
+        font-size: 12px;
+    }
+
+    .input-box input {
+        padding: 8px 8px 8px 36px;
+        font-size: 13px;
+    }
+
+    .input-box i {
+        left: 8px;
+        font-size: 14px;
+    }
+
+    .btn, .logout-btn {
+        padding: 8px 12px;
+        font-size: 13px;
+        min-height: 44px;
+    }
+
+    .color-swatch {
+        width: 36px;
+        height: 36px;
+    }
+
+    .toggle-btn {
+        padding: 8px 12px;
+        font-size: 13px;
+        min-height: 44px;
+    }
+
+    .slider::-webkit-slider-thumb,
+    .slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+    }
+
+    .slider-value {
+        font-size: 12px;
+    }
+
+    .key-item {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+
+    .key-item span {
+        font-size: 12px;
+    }
+
+    #keys-list h4 {
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
+
+    .notification {
+        padding: 8px 15px;
+        font-size: 14px;
+        max-width: 90%;
+    }
+}

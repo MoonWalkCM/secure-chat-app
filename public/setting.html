@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Settings</title>
+    <link rel="stylesheet" href="main-style.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+<body>
+    <header class="top-bar">
+        <div class="logo">
+            <i class="fas fa-rocket"></i>
+            <span data-lang-key="dashboard">MwLauncher</span>
+        </div>
+        <nav class="navigation">
+            <a href="main.html" class="nav-button"><i class="fas fa-home"></i> <span data-lang-key="home">Home</span></a>
+            <a href="chats.html" class="nav-button"><i class="fas fa-comments"></i> <span data-lang-key="chats">Chats</span></a>
+            <a href="calls.html" class="nav-button"><i class="fas fa-phone"></i> <span data-lang-key="calls">Calls</span></a>
+            <a href="profile.html" class="nav-button"><i class="fas fa-user"></i> <span data-lang-key="profile">Profile</span></a>
+        </nav>
+        <div class="time-display">
+            <i class="fas fa-clock"></i>
+            <span id="msk-time"></span>
+        </div>
+    </header>
+    <div class="main-content">
+        <h1 data-lang-key="pageTitle">Page Settings</h1>
+        <p data-lang-key="pageSubtitle">Customize the appearance and language of the interface.</p>
+        
+        <div class="settings-grid">
+            <div class="setting-card">
+                <h3 data-lang-key="themeTitle">Interface Color</h3>
+                <p data-lang-key="themeSubtitle">Select your favorite accent color.</p>
+                <div class="color-palette">
+                    <div class="color-swatch active" style="--swatch-color: #82aaff;" data-color="#82aaff"></div>
+                    <div class="color-swatch" style="--swatch-color: #76D7C4;" data-color="#76D7C4"></div>
+                    <div class="color-swatch" style="--swatch-color: #F7DC6F;" data-color="#F7DC6F"></div>
+                    <div class="color-swatch" style="--swatch-color: #E74C3C;" data-color="#E74C3C"></div>
+                    <div class="color-swatch" style="--swatch-color: #BB86FC;" data-color="#BB86FC"></div>
+                    <div class="color-swatch" style="--swatch-color: #FF0266;" data-color="#FF0266"></div>
+                    <div class="color-swatch" style="--swatch-color: #03DAC5;" data-color="#03DAC5"></div>
+                    <div class="color-swatch" style="--swatch-color: #F48FB1;" data-color="#F48FB1"></div>
+                </div>
+            </div>
+
+            <div class="setting-card">
+                <h3 data-lang-key="colorThemeTitle">Color Themes</h3>
+                <p data-lang-key="colorThemeSubtitle">Choose a predefined color theme for the entire dashboard.</p>
+                <div class="color-palette">
+                    <div class="color-swatch" style="--swatch-color: #1e3c72;" data-color="#1e3c72" data-gradient="#2a5298"></div>
+                    <div class="color-swatch" style="--swatch-color: #34495E;" data-color="#34495E" data-gradient="#2C3E50"></div>
+                    <div class="color-swatch" style="--swatch-color: #27AE60;" data-color="#27AE60" data-gradient="#2ECC71"></div>
+                    <div class="color-swatch" style="--swatch-color: #8E44AD;" data-color="#8E44AD" data-gradient="#9B59B6"></div>
+                    <div class="color-swatch" style="--swatch-color: #D35400;" data-color="#D35400" data-gradient="#E67E22"></div>
+                    <div class="color-swatch" style="--swatch-color: #C0392B;" data-color="#C0392B" data-gradient="#E74C3C"></div>
+                    <div class="color-swatch" style="--swatch-color: #16A085;" data-color="#16A085" data-gradient="#1ABC9C"></div>
+                    <div class="color-swatch" style="--swatch-color: #2980B9;" data-color="#2980B9" data-gradient="#3498DB"></div>
+                </div>
+            </div>
+
+
+            <div class="setting-card">
+                <h3 data-lang-key="langTitle">Language</h3>
+                <p data-lang-key="langSubtitle">Choose interface language.</p>
+                <div class="language-toggle">
+                    <button id="lang-en" class="toggle-btn">English</button>
+                    <button id="lang-ru" class="toggle-btn">Русский</button>
+                </div>
+            </div>
+
+            <div class="setting-card">
+                <h3 data-lang-key="ramTitle">RAM Allocation</h3>
+                <p data-lang-key="ramSubtitle">For optimization of complex scripts.</p>
+                <div class="ram-slider">
+                    <input type="range" min="256" max="4096" value="1024" class="slider" id="ramRange">
+                    <div class="slider-value"><span id="ramValue">1024</span> MB</div>
+                </div>
+            </div>
+
+            <div class="setting-card">
+                <h3 data-lang-key="logoutTitle">Logout</h3>
+                <p data-lang-key="logoutSubtitle">Securely log out of your account.</p>
+                <button id="logout-btn" class="logout-btn" data-lang-key="logoutButton">Log Out Now</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="settings.js"></script>
+</body>
+</html>

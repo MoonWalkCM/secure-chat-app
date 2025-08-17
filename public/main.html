@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MwLauncher</title>
+    <link rel="stylesheet" href="main-style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <style>
+        .card-notification {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: none;
+            z-index: 10;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            text-align: center;
+            width: 80%;
+            animation: fadeInOut 3s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-notification i {
+            margin-right: 8px;
+        }
+        .launch-notice { background: #27ae60; color: #fff; }
+        .loading-notice { background: #3498db; color: #fff; }
+        .success-notice { background: #27ae60; color: #fff; }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        #card.loading .card-content {
+            filter: blur(2px);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <header class="top-bar">
+        <div class="logo">
+            <i class="fas fa-rocket"></i>
+            <span data-lang-key="dashboard">MwLauncher</span>
+        </div>
+        <nav class="navigation">
+            <a href="profile.html" class="nav-button active"><i class="fas fa-home"></i> <span data-lang-key="home">Home</span></a>
+            <a href="chats.html" class="nav-button"><i class="fas fa-comments"></i> <span data-lang-key="chats">Chats</span></a>
+            <a href="calls.html" class="nav-button"><i class="fas fa-phone"></i> <span data-lang-key="calls">Calls</span></a>
+            <a href="profile.html" class="nav-button"><i class="fas fa-user"></i> <span data-lang-key="profile">Profile</span></a>
+        </nav>
+        
+    </header>
+
+    <div class="main-content center-text">
+        <h1 data-lang-key="welcome">Welcome, MwX!</h1>
+        <p data-lang-key="welcomeSubtitle">This is your Launcher for games. Here's an overview of your account.</p>
+        <!-- Карточка от Uiverse.io by 00Kubi --> 
+        <div class="container noselect">
+            <div class="canvas">
+                <div class="tracker tr-1"></div>
+                <div class="tracker tr-2"></div>
+                <div class="tracker tr-3"></div>
+                <div class="tracker tr-4"></div>
+                <div class="tracker tr-5"></div>
+                <div class="tracker tr-6"></div>
+                <div class="tracker tr-7"></div>
+                <div class="tracker tr-8"></div>
+                <div class="tracker tr-9"></div>
+                <div id="card">
+                    <div class="card-content">
+                        <div class="card-glare"></div>
+                        <div class="cyber-lines">
+                            <span></span><span></span><span></span><span></span>
+                        </div>
+                        <p id="prompt">Augustus Crack</p>
+                        <div class="title">Launch<br /></div>
+                        <div class="glowing-elements">
+                            <div class="glow-1"></div>
+                            <div class="glow-2"></div>
+                            <div class="glow-3"></div>
+                        </div>
+                        <div class="subtitle">
+                            <span>Tap to</span>
+                            <span class="highlight">Launch</span>
+                        </div>
+                        <div class="card-particles">
+                            <span></span><span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                        <div class="corner-elements">
+                            <span></span><span></span><span></span><span></span>
+                        </div>
+                        <div class="scan-line"></div>
+                    </div>
+                    <!-- Индикатор загрузки на карточке -->
+                    <div class="card-notification" id="launchNotification"></div>
+                </div>
+            </div>
+        </div>
+
+        
+    </div>
+
+    <script src="settings.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const card = document.querySelector('#card');
+            const notification = document.getElementById('launchNotification');
+
+            if (card) {
+                card.addEventListener('click', () => {
+                    // Показываем уведомление "Launch" на 3 секунды
+                    card.classList.add('loading');
+                    notification.className = 'card-notification launch-notice';
+                    notification.textContent = 'Launch';
+                    notification.style.display = 'block';
+                    setTimeout(() => {
+                        // После 3 секунд показываем "Launching..." с индикатором на 10 секунд
+                        notification.className = 'card-notification loading-notice';
+                        notification.innerHTML = 'Launching... <div class="spinner"></div>';
+                        notification.style.display = 'block';
+
+                        // Отправляем запрос к серверу
+                        fetch('http://localhost:3000/launch')
+                            .then(response => {
+                                if (!response.ok) {
+                                    console.error('Ошибка при запросе к серверу:', response.status);
+                                    notification.textContent = `Error - Launch failed (Status: ${response.status})`;
+                                    notification.className = 'card-notification';
+                                    notification.style.background = '#e74c3c';
+                                    setTimeout(() => {
+                                        notification.style.display = 'none';
+                                        card.classList.remove('loading');
+                                    }, 3000);
+                                } else {
+                                    response.text().then(text => {
+                                        // После 10 секунд (с учётом предыдущих 3) показываем "Success" на 3 секунды
+                                        setTimeout(() => {
+                                            notification.className = 'card-notification success-notice';
+                                            notification.textContent = `Success - ${text}`;
+                                            notification.style.display = 'block';
+                                            setTimeout(() => {
+                                                notification.style.display = 'none';
+                                                card.classList.remove('loading');
+                                            }, 3000);
+                                        }, 10000 - 3000); // 10 секунд минус 3 секунды "Launch"
+                                    });
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Ошибка сети:', error);
+                                notification.textContent = 'Succesful';
+                                notification.className = 'card-notification';
+                                notification.style.background = '#27ae60';
+                                setTimeout(() => {
+                                    notification.style.display = 'none';
+                                    card.classList.remove('loading');
+                                }, 3000);
+                            });
+                    }, 3000); // 3 секунды для "Launch"
+                });
+            }
+        });
+    </script>
+</body>
+</html>

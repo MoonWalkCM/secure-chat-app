@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чаты - MwLauncher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="main-style.css">
+    <link rel="stylesheet" href="chats-style.css">
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">
+            <i class="fas fa-rocket"></i>
+            MwLauncher
+        </div>
+        <nav class="navigation">
+            <a href="main.html" class="nav-button"><i class="fas fa-home"></i> <span data-lang-key="home">Home</span></a>
+            <a href="chats.html" class="nav-button active"><i class="fas fa-comments"></i> <span data-lang-key="chats">Chats</span></a>
+            <a href="calls.html" class="nav-button"><i class="fas fa-phone"></i> <span data-lang-key="calls">Calls</span></a>
+            <a href="profile.html" class="nav-button"><i class="fas fa-user"></i> <span data-lang-key="profile">Profile</span></a>
+        </nav>
+        
+    </div>
+
+    <div class="main-content">
+        <div class="chat-container">
+            <div class="mobile-toggle">
+            <button id="toggle-contacts-btn" class="btn" data-lang-key="contacts">Контакты</button>
+        </div>
+            <div class="contacts-section hidden-mobile">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Поиск пользователя..." data-lang-key="searchPlaceholder">
+                    <i class="fas fa-search"></i>
+                </div>
+                <h3 data-lang-key="contacts">Контакты</h3>
+                <div class="contacts-list" id="contacts-list"></div>
+            </div>
+            <div class="chat-section">
+                <div class="chat-header">
+                    <h3 id="chat-recipient">Выберите контакт для начала чата</h3>
+                    <div class="encryption-status" id="encryption-status">
+                        <i class="fas fa-lock"></i>
+                        <span>End-to-End шифрование</span>
+                    </div>
+                </div>
+                <div class="chat-messages" id="messages"></div>
+                <div class="chat-input">
+    <div class="input-box">
+        <input type="text" id="message-input" placeholder="Введите сообщение...">
+    </div>
+    
+    <div class="action-buttons">
+        <button id="file-upload-btn" class="action-btn" title="Отправить файл"><i class="fas fa-paperclip"></i></button>
+        <button id="record-audio-btn" class="action-btn" title="Записать голосовое сообщение"><i class="fas fa-microphone"></i></button>
+        <button id="send-message-btn" class="action-btn send-btn" title="Отправить сообщение"><i class="fas fa-paper-plane"></i></button>
+    </div>
+    <input type="file" id="file-input" style="display: none;">
+</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification">
+        <span id="notification-text"></span>
+    </div>
+<div id="report-modal" class="report-modal">
+        <div class="report-modal-content">
+            <button class="close-btn" title="Close">×</button>
+            <h3 data-lang-key="reportContact">Report Contact</h3>
+            <label for="report-nickname">Nickname</label>
+            <input type="text" id="report-nickname" placeholder="Enter nickname" readonly>
+            <label for="report-reason">Reason</label>
+            <textarea id="report-reason" placeholder="Enter reason for report"></textarea>
+            <button type="submit" id="submit-report-btn">Submit Report</button>
+        </div>
+    </div>
+    <script src="main.js"></script>
+    <script src="chats.js"></script>
+</body>
+</html>

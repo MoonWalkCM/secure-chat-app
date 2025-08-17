@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Очистка данных - MwLauncher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="main-style.css">
+    <style>
+        .clear-container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 30px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        .clear-button {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        .clear-button:hover {
+            background: #ff3742;
+        }
+        .success-button {
+            background: #25d366;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        .success-button:hover {
+            background: #128c7e;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #e1f3fb;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">
+            <i class="fas fa-rocket"></i>
+            MwLauncher - Очистка данных
+        </div>
+        <nav class="navigation">
+            <a href="main.html" class="nav-button"><i class="fas fa-home"></i> Главная</a>
+            <a href="chats.html" class="nav-button"><i class="fas fa-comments"></i> Чаты</a>
+            <a href="calls.html" class="nav-button"><i class="fas fa-phone"></i> Звонки</a>
+        </nav>
+    </div>
+
+    <div class="clear-container">
+        <h1><i class="fas fa-broom"></i> Очистка данных браузера</h1>
+        
+        <div class="info">
+            <h3>Почему нужно очистить данные?</h3>
+            <p>После обновления системы шифрования и исправления ошибок, старые JWT токены и ключи могут быть несовместимы с новой версией. Очистка localStorage решит проблемы с подключением.</p>
+        </div>
+
+        <div id="current-status" class="status">
+            <h3>Текущее состояние:</h3>
+            <div id="status-content"></div>
+        </div>
+
+        <button class="clear-button" onclick="clearAllData()">
+            <i class="fas fa-trash"></i> Очистить все данные
+        </button>
+        
+        <button class="success-button" onclick="goToLogin()">
+            <i class="fas fa-sign-in-alt"></i> Перейти к входу
+        </button>
+
+        <div id="result-status" class="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        function showStatus(message, isSuccess = true) {
+            const element = document.getElementById('result-status');
+            element.textContent = message;
+            element.className = `status ${isSuccess ? 'success' : 'error'}`;
+            element.style.display = 'block';
+        }
+
+        function updateCurrentStatus() {
+            const statusContent = document.getElementById('status-content');
+            const jwtToken = localStorage.getItem('jwtToken');
+            const hasKeys = localStorage.getItem('hasEncryptionKeys');
+            const privateKey = localStorage.getItem('privateKey');
+            
+            let status = '';
+            status += `JWT токен: ${jwtToken ? '✅ Найден' : '❌ Отсутствует'}<br>`;
+            status += `Ключи шифрования: ${hasKeys ? '✅ Найдены' : '❌ Отсутствуют'}<br>`;
+            status += `Приватный ключ: ${privateKey ? '✅ Найден' : '❌ Отсутствует'}<br>`;
+            
+            statusContent.innerHTML = status;
+        }
+
+        function clearAllData() {
+            try {
+                // Очищаем все данные
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                showStatus('✅ Все данные успешно очищены! Теперь можете войти заново.', true);
+                updateCurrentStatus();
+                
+                // Автоматический переход через 3 секунды
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 3000);
+                
+            } catch (error) {
+                showStatus(`❌ Ошибка при очистке данных: ${error.message}`, false);
+            }
+        }
+
+        function goToLogin() {
+            window.location.href = 'index.html';
+        }
+
+        // Обновляем статус при загрузке страницы
+        window.addEventListener('load', updateCurrentStatus);
+    </script>
+</body>
+</html> 

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест шифрования - MwLauncher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="main-style.css">
+    <style>
+        .test-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            color: #25d366;
+            margin-bottom: 15px;
+        }
+        .test-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .test-button {
+            background: #25d366;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #128c7e;
+        }
+        .result {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo">
+            <i class="fas fa-rocket"></i>
+            MwLauncher - Тест шифрования
+        </div>
+        <nav class="navigation">
+            <a href="main.html" class="nav-button"><i class="fas fa-home"></i> Главная</a>
+            <a href="chats.html" class="nav-button"><i class="fas fa-comments"></i> Чаты</a>
+            <a href="calls.html" class="nav-button"><i class="fas fa-phone"></i> Звонки</a>
+        </nav>
+    </div>
+
+    <div class="test-container">
+        <h1><i class="fas fa-lock"></i> Тест системы шифрования</h1>
+        
+        <div class="test-section">
+            <h3>1. Проверка поддержки Web Crypto API</h3>
+            <button class="test-button" onclick="checkCryptoSupport()">Проверить поддержку</button>
+            <div id="crypto-status" class="status"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>2. Генерация ключей</h3>
+            <button class="test-button" onclick="generateTestKeys()">Сгенерировать ключи</button>
+            <div id="key-status" class="status"></div>
+            <div id="public-key" class="result" style="display: none;"></div>
+            <div id="private-key" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>3. Тест шифрования/расшифровки</h3>
+            <input type="text" id="test-message" class="test-input" placeholder="Введите сообщение для шифрования" value="Привет! Это тестовое сообщение.">
+            <button class="test-button" onclick="testEncryption()">Зашифровать</button>
+            <button class="test-button" onclick="testDecryption()">Расшифровать</button>
+            <div id="encryption-status" class="status"></div>
+            <div id="encrypted-result" class="result" style="display: none;"></div>
+            <div id="decrypted-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>4. Проверка ключей в localStorage</h3>
+            <button class="test-button" onclick="checkLocalStorage()">Проверить localStorage</button>
+            <div id="storage-status" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        let testKeyPair = null;
+        let testEncryptedData = null;
+
+        function showStatus(elementId, message, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${isSuccess ? 'success' : 'error'}`;
+        }
+
+        function checkCryptoSupport() {
+            if (window.crypto && window.crypto.subtle) {
+                showStatus('crypto-status', '✅ Web Crypto API поддерживается', true);
+            } else {
+                showStatus('crypto-status', '❌ Web Crypto API не поддерживается', false);
+            }
+        }
+
+        async function generateTestKeys() {
+            try {
+                showStatus('key-status', '🔄 Генерация ключей...', true);
+                
+                testKeyPair = await window.crypto.subtle.generateKey(
+                    {
+                        name: "RSA-OAEP",
+                        modulusLength: 2048,
+                        publicExponent: new Uint8Array([1, 0, 1]),
+                        hash: "SHA-256",
+                    },
+                    true,
+                    ["encrypt", "decrypt"]
+                );
+
+                const publicKeyExported = await window.crypto.subtle.exportKey("spki", testKeyPair.publicKey);
+                const privateKeyExported = await window.crypto.subtle.exportKey("pkcs8", testKeyPair.privateKey);
+
+                const publicKeyString = btoa(String.fromCharCode(...new Uint8Array(publicKeyExported)));
+                const privateKeyString = btoa(String.fromCharCode(...new Uint8Array(privateKeyExported)));
+
+                document.getElementById('public-key').textContent = `Публичный ключ: ${publicKeyString.substring(0, 50)}...`;
+                document.getElementById('public-key').style.display = 'block';
+                
+                document.getElementById('private-key').textContent = `Приватный ключ: ${privateKeyString.substring(0, 50)}...`;
+                document.getElementById('private-key').style.display = 'block';
+
+                showStatus('key-status', '✅ Ключи успешно сгенерированы', true);
+            } catch (error) {
+                showStatus('key-status', `❌ Ошибка генерации ключей: ${error.message}`, false);
+            }
+        }
+
+        async function testEncryption() {
+            if (!testKeyPair) {
+                showStatus('encryption-status', '❌ Сначала сгенерируйте ключи', false);
+                return;
+            }
+
+            try {
+                const message = document.getElementById('test-message').value;
+                const encoder = new TextEncoder();
+                const data = encoder.encode(message);
+
+                const encrypted = await window.crypto.subtle.encrypt(
+                    {
+                        name: "RSA-OAEP"
+                    },
+                    testKeyPair.publicKey,
+                    data
+                );
+
+                testEncryptedData = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+                
+                document.getElementById('encrypted-result').textContent = `Зашифрованное сообщение: ${testEncryptedData}`;
+                document.getElementById('encrypted-result').style.display = 'block';
+                
+                showStatus('encryption-status', '✅ Сообщение успешно зашифровано', true);
+            } catch (error) {
+                showStatus('encryption-status', `❌ Ошибка шифрования: ${error.message}`, false);
+            }
+        }
+
+        async function testDecryption() {
+            if (!testKeyPair || !testEncryptedData) {
+                showStatus('encryption-status', '❌ Сначала зашифруйте сообщение', false);
+                return;
+            }
+
+            try {
+                const binaryString = atob(testEncryptedData);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const decrypted = await window.crypto.subtle.decrypt(
+                    {
+                        name: "RSA-OAEP"
+                    },
+                    testKeyPair.privateKey,
+                    bytes
+                );
+
+                const decoder = new TextDecoder();
+                const decryptedMessage = decoder.decode(decrypted);
+                
+                document.getElementById('decrypted-result').textContent = `Расшифрованное сообщение: ${decryptedMessage}`;
+                document.getElementById('decrypted-result').style.display = 'block';
+                
+                showStatus('encryption-status', '✅ Сообщение успешно расшифровано', true);
+            } catch (error) {
+                showStatus('encryption-status', `❌ Ошибка расшифровки: ${error.message}`, false);
+            }
+        }
+
+        function checkLocalStorage() {
+            const hasKeys = localStorage.getItem('hasEncryptionKeys');
+            const privateKey = localStorage.getItem('privateKey');
+            
+            if (hasKeys && privateKey) {
+                showStatus('storage-status', '✅ Ключи шифрования найдены в localStorage', true);
+            } else {
+                showStatus('storage-status', '❌ Ключи шифрования не найдены в localStorage', false);
+            }
+        }
+
+        // Автоматическая проверка при загрузке страницы
+        window.addEventListener('load', () => {
+            checkCryptoSupport();
+            checkLocalStorage();
+        });
+    </script>
+</body>
+</html> 

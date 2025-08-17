@@ -1,0 +1,7 @@
+tunnel: 60688228-cd9d-446f-8ac7-509bbc65c7f6
+credentials-file: C:\Users\rasau\.cloudflared\60688228-cd9d-446f-8ac7-509bbc65c7f6.json
+
+ingress:
+  - hostname: chat-app.your-domain.com
+    service: http://localhost:3000
+  - service: http_status:404 

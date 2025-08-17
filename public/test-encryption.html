@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест шифрования - MwLauncher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #e1f3fb;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-shield-alt"></i> Тест системы шифрования</h1>
+        
+        <div class="test-section">
+            <h3>1. Проверка Web Crypto API</h3>
+            <div id="crypto-status" class="status info">Проверяем поддержку Web Crypto API...</div>
+            <button onclick="checkCryptoSupport()">Проверить поддержку</button>
+        </div>
+
+        <div class="test-section">
+            <h3>2. Генерация ключей</h3>
+            <div id="key-status" class="status info">Ключи не сгенерированы</div>
+            <button onclick="generateTestKeys()">Сгенерировать ключи</button>
+            <button onclick="checkExistingKeys()">Проверить существующие ключи</button>
+        </div>
+
+        <div class="test-section">
+            <h3>3. Тест шифрования/расшифровки</h3>
+            <input type="text" id="test-message" placeholder="Введите тестовое сообщение" value="Привет, это тестовое сообщение!">
+            <button onclick="testEncryption()">Зашифровать и расшифровать</button>
+            <div id="encryption-result" class="status info">Результат появится здесь</div>
+        </div>
+
+        <div class="test-section">
+            <h3>4. Лог операций</h3>
+            <div id="log" class="log"></div>
+            <button onclick="clearLog()">Очистить лог</button>
+        </div>
+
+        <div class="test-section">
+            <h3>5. Навигация</h3>
+            <button onclick="window.location.href='index.html'">Вернуться к входу</button>
+            <button onclick="window.location.href='chats.html'">Перейти к чатам</button>
+            <button onclick="window.location.href='clear-storage.html'">Очистить данные</button>
+        </div>
+    </div>
+
+    <script>
+        let testKeyPair = null;
+        let testPublicKey = null;
+        let testPrivateKey = null;
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            logElement.textContent += logEntry;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+        }
+
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+        }
+
+        function checkCryptoSupport() {
+            log('Проверка поддержки Web Crypto API...');
+            
+            if (window.crypto && window.crypto.subtle) {
+                showStatus('crypto-status', '✅ Web Crypto API поддерживается', 'success');
+                log('Web Crypto API доступен');
+                
+                // Проверяем поддержку алгоритмов
+                const algorithms = ['RSA-OAEP', 'AES-CBC'];
+                algorithms.forEach(alg => {
+                    log(`Проверка алгоритма: ${alg}`);
+                });
+            } else {
+                showStatus('crypto-status', '❌ Web Crypto API не поддерживается', 'error');
+                log('Web Crypto API недоступен');
+            }
+        }
+
+        async function generateKeyPair() {
+            try {
+                log('Генерация RSA ключевой пары...');
+                const keyPair = await window.crypto.subtle.generateKey(
+                    {
+                        name: "RSA-OAEP",
+                        modulusLength: 2048,
+                        publicExponent: new Uint8Array([1, 0, 1]),
+                        hash: "SHA-256"
+                    },
+                    true,
+                    ["encrypt", "decrypt"]
+                );
+                log('RSA ключевая пара сгенерирована');
+                return keyPair;
+            } catch (error) {
+                log(`Ошибка генерации RSA ключей: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function exportPublicKey(publicKey) {
+            try {
+                const exported = await window.crypto.subtle.exportKey("spki", publicKey);
+                const exportedAsString = btoa(String.fromCharCode(...new Uint8Array(exported)));
+                return exportedAsString;
+            } catch (error) {
+                log(`Ошибка экспорта публичного ключа: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function exportPrivateKey(privateKey) {
+            try {
+                const exported = await window.crypto.subtle.exportKey("pkcs8", privateKey);
+                const exportedAsString = btoa(String.fromCharCode(...new Uint8Array(exported)));
+                return exportedAsString;
+            } catch (error) {
+                log(`Ошибка экспорта приватного ключа: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function importPublicKey(publicKeyString) {
+            try {
+                const binaryString = atob(publicKeyString);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                return await window.crypto.subtle.importKey("spki", bytes, {
+                    name: "RSA-OAEP",
+                    hash: "SHA-256"
+                }, true, ["encrypt"]);
+            } catch (error) {
+                log(`Ошибка импорта публичного ключа: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function importPrivateKey(privateKeyString) {
+            try {
+                const binaryString = atob(privateKeyString);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                return await window.crypto.subtle.importKey("pkcs8", bytes, {
+                    name: "RSA-OAEP",
+                    hash: "SHA-256"
+                }, true, ["decrypt"]);
+            } catch (error) {
+                log(`Ошибка импорта приватного ключа: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function encryptMessage(message, publicKey) {
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(message);
+                const encrypted = await window.crypto.subtle.encrypt(
+                    {
+                        name: "RSA-OAEP"
+                    },
+                    publicKey,
+                    data
+                );
+                return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+            } catch (error) {
+                log(`Ошибка RSA шифрования: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function decryptMessage(encryptedMessage, privateKey) {
+            try {
+                const binaryString = atob(encryptedMessage);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const decrypted = await window.crypto.subtle.decrypt(
+                    {
+                        name: "RSA-OAEP"
+                    },
+                    privateKey,
+                    bytes
+                );
+                const decoder = new TextDecoder();
+                return decoder.decode(decrypted);
+            } catch (error) {
+                log(`Ошибка RSA расшифровки: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function generateAESKey() {
+            try {
+                return await window.crypto.subtle.generateKey(
+                    {
+                        name: "AES-CBC",
+                        length: 256
+                    },
+                    true,
+                    ["encrypt", "decrypt"]
+                );
+            } catch (error) {
+                log(`Ошибка генерации AES ключа: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function encryptWithAES(data, key) {
+            try {
+                const iv = window.crypto.getRandomValues(new Uint8Array(16));
+                const encoder = new TextEncoder();
+                const encodedData = encoder.encode(data);
+                
+                const encrypted = await window.crypto.subtle.encrypt(
+                    {
+                        name: "AES-CBC",
+                        iv: iv
+                    },
+                    key,
+                    encodedData
+                );
+                
+                return {
+                    encrypted: btoa(String.fromCharCode(...new Uint8Array(encrypted))),
+                    iv: btoa(String.fromCharCode(...iv))
+                };
+            } catch (error) {
+                log(`Ошибка AES шифрования: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function decryptAESMessage(encryptedData, key, iv) {
+            try {
+                const binaryString = atob(encryptedData);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                const ivBytes = new Uint8Array(atob(iv).split('').map(char => char.charCodeAt(0)));
+                const keyBytes = new Uint8Array(atob(key).split('').map(char => char.charCodeAt(0)));
+                
+                const cryptoKey = await window.crypto.subtle.importKey(
+                    "raw",
+                    keyBytes,
+                    { name: "AES-CBC" },
+                    false,
+                    ["decrypt"]
+                );
+                
+                const decrypted = await window.crypto.subtle.decrypt(
+                    {
+                        name: "AES-CBC",
+                        iv: ivBytes
+                    },
+                    cryptoKey,
+                    bytes
+                );
+                
+                const decoder = new TextDecoder();
+                return decoder.decode(decrypted);
+            } catch (error) {
+                log(`Ошибка AES расшифровки: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function generateTestKeys() {
+            try {
+                log('Начало генерации тестовых ключей...');
+                
+                // Генерируем RSA ключи
+                testKeyPair = await generateKeyPair();
+                testPublicKey = await exportPublicKey(testKeyPair.publicKey);
+                testPrivateKey = await exportPrivateKey(testKeyPair.privateKey);
+                
+                showStatus('key-status', '✅ Тестовые ключи сгенерированы', 'success');
+                log('Тестовые ключи успешно созданы');
+                log(`Публичный ключ: ${testPublicKey.substring(0, 50)}...`);
+                log(`Приватный ключ: ${testPrivateKey.substring(0, 50)}...`);
+                
+            } catch (error) {
+                showStatus('key-status', `❌ Ошибка генерации ключей: ${error.message}`, 'error');
+                log(`Ошибка: ${error.message}`);
+            }
+        }
+
+        function checkExistingKeys() {
+            const hasKeys = localStorage.getItem('hasEncryptionKeys');
+            const privateKey = localStorage.getItem('privateKey');
+            
+            if (hasKeys && privateKey) {
+                showStatus('key-status', '✅ Ключи найдены в localStorage', 'success');
+                log('Найдены существующие ключи в localStorage');
+                log(`Приватный ключ: ${privateKey.substring(0, 50)}...`);
+            } else {
+                showStatus('key-status', '❌ Ключи не найдены в localStorage', 'error');
+                log('Ключи в localStorage не найдены');
+            }
+        }
+
+        async function testEncryption() {
+            if (!testKeyPair) {
+                showStatus('encryption-result', '❌ Сначала сгенерируйте ключи', 'error');
+                return;
+            }
+
+            const originalMessage = document.getElementById('test-message').value;
+            if (!originalMessage) {
+                showStatus('encryption-result', '❌ Введите сообщение для тестирования', 'error');
+                return;
+            }
+
+            try {
+                log('Начало теста шифрования...');
+                log(`Оригинальное сообщение: "${originalMessage}"`);
+
+                // 1. Генерируем AES ключ
+                const aesKey = await generateAESKey();
+                const aesKeyExported = await window.crypto.subtle.exportKey("raw", aesKey);
+                const aesKeyString = btoa(String.fromCharCode(...new Uint8Array(aesKeyExported)));
+                log('AES ключ сгенерирован');
+
+                // 2. Шифруем сообщение AES
+                const aesResult = await encryptWithAES(originalMessage, aesKey);
+                log('Сообщение зашифровано AES');
+
+                // 3. Шифруем AES ключ RSA
+                const encryptedAESKey = await encryptMessage(aesKeyString, testKeyPair.publicKey);
+                log('AES ключ зашифрован RSA');
+
+                // 4. Расшифровываем AES ключ
+                const decryptedAESKey = await decryptMessage(encryptedAESKey, testKeyPair.privateKey);
+                log('AES ключ расшифрован RSA');
+
+                // 5. Расшифровываем сообщение
+                const decryptedMessage = await decryptAESMessage(aesResult.encrypted, decryptedAESKey, aesResult.iv);
+                log('Сообщение расшифровано AES');
+
+                // Проверяем результат
+                if (decryptedMessage === originalMessage) {
+                    showStatus('encryption-result', '✅ Тест успешен! Сообщение корректно зашифровано и расшифровано', 'success');
+                    log('✅ Тест шифрования прошел успешно!');
+                } else {
+                    showStatus('encryption-result', '❌ Ошибка: расшифрованное сообщение не совпадает с оригиналом', 'error');
+                    log(`❌ Ошибка: "${decryptedMessage}" !== "${originalMessage}"`);
+                }
+
+            } catch (error) {
+                showStatus('encryption-result', `❌ Ошибка тестирования: ${error.message}`, 'error');
+                log(`Ошибка тестирования: ${error.message}`);
+            }
+        }
+
+        // Автоматическая проверка при загрузке
+        window.addEventListener('load', () => {
+            log('Страница тестирования шифрования загружена');
+            checkCryptoSupport();
+            checkExistingKeys();
+        });
+    </script>
+</body>
+</html> 

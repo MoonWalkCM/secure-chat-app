@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Добавить контакты - MwLauncher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .search-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .search-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .user-list {
+            margin: 20px 0;
+        }
+        .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-login {
+            font-weight: bold;
+            color: #333;
+        }
+        .user-nickname {
+            color: #666;
+            font-size: 14px;
+        }
+        .add-btn {
+            background: #25d366;
+        }
+        .add-btn:hover {
+            background: #128c7e;
+        }
+        .remove-btn {
+            background: #ff4757;
+        }
+        .remove-btn:hover {
+            background: #ff3742;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #e1f3fb;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .contacts-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-user-plus"></i> Управление контактами</h1>
+        
+        <div id="status" class="status info">
+            <i class="fas fa-info-circle"></i> Проверка авторизации...
+        </div>
+        
+        <div class="search-section">
+            <h3><i class="fas fa-search"></i> Поиск пользователей</h3>
+            <input type="text" id="search-input" class="search-input" placeholder="Введите логин или никнейм пользователя...">
+            <button onclick="searchUsers()">Найти</button>
+            <div id="search-results" class="user-list"></div>
+        </div>
+        
+        <div class="contacts-section">
+            <h3><i class="fas fa-users"></i> Мои контакты</h3>
+            <button onclick="loadContacts()">Обновить список</button>
+            <div id="contacts-list" class="user-list"></div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button onclick="goToCalls()">Перейти к звонкам</button>
+            <button onclick="goToChats()">Перейти к чатам</button>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'}"></i> ${message}`;
+        }
+        
+        function checkAuth() {
+            const token = localStorage.getItem('jwtToken');
+            if (!token) {
+                updateStatus('Токен не найден, перенаправляем на страницу входа', 'error');
+                setTimeout(() => window.location.href = 'index.html', 2000);
+                return false;
+            }
+            
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const now = Date.now() / 1000;
+                
+                if (payload.exp < now) {
+                    updateStatus('Токен истек, перенаправляем на страницу входа', 'error');
+                    setTimeout(() => window.location.href = 'index.html', 2000);
+                    return false;
+                }
+                
+                currentUser = payload.login;
+                updateStatus(`Авторизован как ${currentUser}`, 'success');
+                return true;
+            } catch (error) {
+                updateStatus('Неверный токен, перенаправляем на страницу входа', 'error');
+                setTimeout(() => window.location.href = 'index.html', 2000);
+                return false;
+            }
+        }
+        
+        async function searchUsers() {
+            const searchInput = document.getElementById('search-input');
+            const nickname = searchInput.value.trim();
+            
+            if (!nickname) {
+                updateStatus('Введите логин или никнейм для поиска', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/search-user?nickname=${encodeURIComponent(nickname)}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const users = await response.json();
+                    displaySearchResults(users);
+                } else {
+                    updateStatus('Ошибка поиска пользователей', 'error');
+                }
+            } catch (error) {
+                updateStatus('Ошибка сети: ' + error.message, 'error');
+            }
+        }
+        
+        function displaySearchResults(users) {
+            const resultsDiv = document.getElementById('search-results');
+            
+            if (users.length === 0) {
+                resultsDiv.innerHTML = '<p>Пользователи не найдены</p>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = users.map(user => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-login">${user.login}</div>
+                        <div class="user-nickname">${user.nickname || 'Без никнейма'}</div>
+                    </div>
+                    <button class="add-btn" onclick="addContact('${user.login}')">
+                        <i class="fas fa-plus"></i> Добавить
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        async function addContact(contactLogin) {
+            if (contactLogin === currentUser) {
+                updateStatus('Нельзя добавить себя в контакты', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/add-contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                    },
+                    body: JSON.stringify({ contact_login: contactLogin })
+                });
+                
+                if (response.ok) {
+                    updateStatus(`Пользователь ${contactLogin} добавлен в контакты`, 'success');
+                    loadContacts();
+                } else {
+                    const error = await response.json();
+                    updateStatus(error.error || 'Ошибка добавления контакта', 'error');
+                }
+            } catch (error) {
+                updateStatus('Ошибка сети: ' + error.message, 'error');
+            }
+        }
+        
+        async function removeContact(contactLogin) {
+            try {
+                const response = await fetch('/remove-contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                    },
+                    body: JSON.stringify({ contact_login: contactLogin })
+                });
+                
+                if (response.ok) {
+                    updateStatus(`Пользователь ${contactLogin} удален из контактов`, 'success');
+                    loadContacts();
+                } else {
+                    const error = await response.json();
+                    updateStatus(error.error || 'Ошибка удаления контакта', 'error');
+                }
+            } catch (error) {
+                updateStatus('Ошибка сети: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadContacts() {
+            try {
+                const response = await fetch('/contacts', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const contacts = await response.json();
+                    displayContacts(contacts);
+                } else {
+                    updateStatus('Ошибка загрузки контактов', 'error');
+                }
+            } catch (error) {
+                updateStatus('Ошибка сети: ' + error.message, 'error');
+            }
+        }
+        
+        function displayContacts(contacts) {
+            const contactsDiv = document.getElementById('contacts-list');
+            
+            if (contacts.length === 0) {
+                contactsDiv.innerHTML = '<p>У вас нет контактов. Найдите пользователей выше и добавьте их.</p>';
+                return;
+            }
+            
+            contactsDiv.innerHTML = contacts.map(contact => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-login">${contact.login}</div>
+                        <div class="user-nickname">${contact.nickname || 'Без никнейма'}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeContact('${contact.login}')">
+                        <i class="fas fa-trash"></i> Удалить
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        function goToCalls() {
+            window.location.href = 'calls.html';
+        }
+        
+        function goToChats() {
+            window.location.href = 'chats.html';
+        }
+        
+        // Автоматическая проверка при загрузке
+        document.addEventListener('DOMContentLoaded', () => {
+            if (checkAuth()) {
+                loadContacts();
+            }
+        });
+        
+        // Поиск по Enter
+        document.getElementById('search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchUsers();
+            }
+        });
+    </script>
+</body>
+</html> 

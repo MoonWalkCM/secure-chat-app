@@ -1,0 +1,277 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Poppins", sans-serif;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    background-size: cover;
+    position: relative;
+    overflow: hidden;
+}
+
+body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80') no-repeat center;
+    background-size: cover;
+    opacity: 0;
+    z-index: -1;
+    animation: fadeInBackground 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.5s forwards;
+}
+
+@keyframes fadeInBackground {
+    to { opacity: 0.15; }
+}
+
+.wrapper {
+    width: 350px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(15px);
+    border-radius: 20px;
+    padding: 30px;
+    text-align: center;
+    color: #fff;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
+    animation: slideUpAndFade 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    transform: translateY(50px);
+    opacity: 0;
+}
+
+@keyframes slideUpAndFade {
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.wrapper h1 {
+    font-size: 32px;
+    margin-bottom: 25px;
+    color: #fff;
+    animation: floatIn 1s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards;
+    transform: translateY(-20px);
+    opacity: 0;
+}
+
+@keyframes floatIn {
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.notification {
+    background: rgba(255, 75, 75, 0.9);
+    color: #fff;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.notification i {
+    margin-right: 8px;
+}
+
+.input-box {
+    position: relative;
+    margin: 20px 0;
+}
+
+.input-box input {
+    width: 100%;
+    padding: 12px 40px 12px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 30px;
+    font-size: 16px;
+    color: #fff;
+    outline: none;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.2);
+}
+
+.input-box input:focus {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: scale(1.03);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    animation: pulse 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.2); }
+    70% { box-shadow: 0 0 10px rgba(255, 255, 255, 0.4); }
+    100% { box-shadow: 0 0 10px rgba(255, 255, 255, 0.3); }
+}
+
+.input-box input::placeholder {
+    color: #bbb;
+    transition: color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-box input:focus::placeholder {
+    color: #fff;
+}
+
+.input-box i {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 18px;
+    color: #bbb;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0.7;
+}
+
+.input-box input:focus + i {
+    color: #fff;
+    opacity: 1;
+    transform: translateY(-50%) scale(1.1);
+}
+
+.remember {
+    display: flex;
+    justify-content: center;
+    font-size: 14px;
+    margin: 15px 0;
+    color: #bbb;
+    transition: color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.custom-checkbox input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.checkmark {
+    position: relative;
+    height: 20px;
+    width: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    margin-right: 10px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.custom-checkbox input:checked ~ .checkmark {
+    background: #fff;
+    border-color: #fff;
+}
+
+.checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+}
+
+.custom-checkbox input:checked ~ .checkmark:after {
+    display: block;
+}
+
+.custom-checkbox .checkmark:after {
+    left: 6px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid #1e3c72;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    animation: checkmarkAppear 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes checkmarkAppear {
+    from { transform: rotate(45deg) scale(0); }
+    to { transform: rotate(45deg) scale(1); }
+}
+
+.btn {
+    width: 100%;
+    padding: 12px;
+    background: #fff;
+    border: none;
+    border-radius: 30px;
+    font-size: 16px;
+    color: #1e3c72;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 20px 0;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(30, 60, 114, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+}
+
+.btn:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn:hover {
+    background: #e0e0e0;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.hint-menu {
+    margin-top: 20px;
+    height: 30px;
+    position: relative;
+    overflow: hidden;
+}
+
+.hint-item {
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    font-size: 14px;
+    color: #ddd;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hint-item.active {
+    opacity: 1;
+    transform: translateY(0);
+}

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MwLauncher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="main-style.css">
+    <link rel="stylesheet" href="profile-style.css">
+</head>
+<body>
+    <div class="top-bar">
+        <div class="logo"><i class="fas fa-rocket"></i> MwLauncher</div>
+        <div class="navigation">
+            <a href="main.html" class="nav-button"><i class="fas fa-home"></i> Home</a>
+            <a href="chats.html" class="nav-button"><i class="fas fa-comments"></i> Chats</a>
+            <a href="calls.html" class="nav-button"><i class="fas fa-phone"></i> Calls</a>
+            <a href="profile.html" class="nav-button active"><i class="fas fa-user"></i> Profile</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="notification" id="notification">
+            <span id="notification-text"></span>
+        </div>
+
+        <div class="profile-section">
+            <h1 data-lang-key="profileTitle">Your Profile</h1>
+            <p id="nickname-greeting" data-lang-key="greeting">How are you, User?</p>
+            <p data-lang-key="profileSubtitle">Manage your nickname and password.</p>
+
+            <div class="settings-grid">
+                <div class="setting-card">
+                    <h3 data-lang-key="loginTitle">Login</h3>
+                    <p data-lang-key="loginSubtitle">Your unique login identifier.</p>
+                    <div class="input-box">
+                        <input type="text" id="login" data-lang-key="loginPlaceholder" placeholder="Login" readonly>
+                        <i class="fas fa-user"></i>
+                    </div>
+                </div>
+
+                <div class="setting-card">
+                    <h3 data-lang-key="nicknameTitle">Nickname</h3>
+                    <p data-lang-key="nicknameSubtitle">Choose a display name for your profile.</p>
+                    <div class="input-box">
+                        <input type="text" id="nickname" data-lang-key="nicknamePlaceholder" placeholder="Nickname">
+                        <i class="fas fa-user-edit"></i>
+                    </div>
+                </div>
+
+                <div class="setting-card">
+                    <h3 data-lang-key="passwordTitle">Password</h3>
+                    <p data-lang-key="passwordSubtitle">Update your account password.</p>
+                    <div class="input-box">
+                        <input type="password" id="password" data-lang-key="newPasswordPlaceholder" placeholder="New Password">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                </div>
+
+                <div class="setting-card admin-section" style="display: none;">
+                    <h3>Activate Key</h3>
+                    <p>Enter a key to upgrade your account level.</p>
+                    <div class="input-box">
+                        <input type="text" id="activation-key" placeholder="Activation Key">
+                        <i class="fas fa-key"></i>
+                    </div>
+                    <button class="btn" id="activate-key-btn">Activate Key</button>
+                </div>
+
+                <div class="setting-card admin-section" style="display: none;">
+                    <h3>Generate Registration Key</h3>
+                    <p>Create a new registration key for new users.</p>
+                    <button class="btn" id="generate-key-btn">Generate Key</button>
+                    <p id="generated-key" style="display: none;"></p>
+                </div>
+
+                <div class="setting-card admin-section" style="display: none;">
+                    <h3>Search by Key</h3>
+                    <p>Search for a user by their registration key.</p>
+                    <div class="input-box">
+                        <input type="text" id="search-key" placeholder="Registration Key (MWX-LLC-****-****)">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <button class="btn" id="search-key-btn">Search</button>
+                    <p id="search-key-result" style="display: none;"></p>
+                </div>
+
+                <div class="setting-card admin-section" style="display: none;">
+                    <h3>Ban User</h3>
+                    <p>Ban a user by their login.</p>
+                    <div class="input-box">
+                        <input type="text" id="ban-login" placeholder="User Login">
+                        <i class="fas fa-ban"></i>
+                    </div>
+                    <button class="btn" id="ban-user-btn">Ban User</button>
+                </div>
+
+                <div class="setting-card admin-section" style="display: none;">
+                    <h3>Update User Password</h3>
+                    <p>Update password for another user.</p>
+                    <div class="input-box">
+                        <input type="text" id="target-login" placeholder="Target Login">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="input-box">
+                        <input type="password" id="new-user-password" placeholder="New Password">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <button class="btn" id="update-user-password-btn">Update Password</button>
+                </div>
+
+                <div class="setting-card admin-section" style="display: none;">
+                    <h3>Registration Keys List</h3>
+                    <p>View all registration keys.</p>
+                    <button class="btn" id="show-keys-btn">Show Keys</button>
+                    <div id="keys-list" style="display: none; margin-top: 10px;"></div>
+                </div>
+
+                <div class="setting-card">
+                    <button class="btn" id="update-btn" data-lang-key="updateButton">Update Profile</button>
+                    <button class="logout-btn" data-lang-key="logout">Log Out Now</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h1>Page Settings</h1>
+            <p>Customize the appearance and language of the interface.</p>
+
+            <div class="settings-grid">
+                <div class="setting-card">
+                    <h3>Interface Color</h3>
+                    <p>Select your favorite accent color.</p>
+                    <div class="color-palette">
+                        <div class="color-swatch" style="--swatch-color: #82AAFF;"></div>
+                        <div class="color-swatch" style="--swatch-color: #FF6B6B;"></div>
+                        <div class="color-swatch" style="--swatch-color: #4ECDC4;"></div>
+                        <div class="color-swatch" style="--swatch-color: #FFD93D;"></div>
+                        <div class="color-swatch" style="--swatch-color: #6B728E;"></div>
+                        <div class="color-swatch" style="--swatch-color: #FF8C8C;"></div>
+                        <div class="color-swatch" style="--swatch-color: #4EA8DE;"></div>
+                        <div class="color-swatch" style="--swatch-color: #9B59B6;"></div>
+                    </div>
+                </div>
+
+                <div class="setting-card">
+                    <h3>Color Themes</h3>
+                    <p>Choose a predefined color theme for the entire dashboard.</p>
+                    <div class="color-palette">
+                        <div class="color-swatch theme-swatch" data-base="#2a5298" data-gradient="#1e3c72"></div>
+                        <div class="color-swatch theme-swatch" data-base="#6b0f0f" data-gradient="#3c0707"></div>
+                        <div class="color-swatch theme-swatch" data-base="#0f6b5d" data-gradient="#073c35"></div>
+                        <div class="color-swatch theme-swatch" data-base="#6b5b0f" data-gradient="#3c3507"></div>
+                        <div class="color-swatch theme-swatch" data-base="#2f3c5e" data-gradient="#1c2438"></div>
+                        <div class="color-swatch theme-swatch" data-base="#6b0f3c" data-gradient="#3c0722"></div>
+                        <div class="color-swatch theme-swatch" data-base="#0f4b6b" data-gradient="#07293c"></div>
+                        <div class="color-swatch theme-swatch" data-base="#4b0f6b" data-gradient="#29073c"></div>
+                    </div>
+                </div>
+
+                <div class="setting-card">
+                    <h3>Language</h3>
+                    <p>Choose interface language.</p>
+                    <div class="language-toggle">
+                        <button class="toggle-btn" data-lang="en">English</button>
+                        <button class="toggle-btn" data-lang="ru">Русский</button>
+                    </div>
+                </div>
+
+                <div class="setting-card">
+                    <h3>RAM Allocation</h3>
+                    <p>For optimization of complex scripts.</p>
+                    <div class="ram-slider">
+                        <input type="range" class="slider" min="256" max="4096" step="256" value="1024">
+                        <span class="slider-value">1024 MB</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="profile.js"></script>
+</body>
+</html>
