@@ -433,14 +433,14 @@ async function createPeerConnection() {
     console.log('🔗 WebRTC соединение создано');
 }
 
-// Отправка ICE кандидата
+// Отправка ICE кандидата с повторными попытками
 async function sendIceCandidate(candidate) {
-    if (!currentCall) return;
+    if (!currentCall || !currentCall.callId) {
+        console.log('⚠️ Нет активного звонка для отправки ICE кандидата');
+        return;
+    }
     
-    const maxRetries = 3;
-    let retryCount = 0;
-    
-    const sendWithRetry = async () => {
+    const sendWithRetry = async (retryCount = 0) => {
         try {
             const response = await fetch('/call/ice-candidate', {
                 method: 'POST',
@@ -449,32 +449,35 @@ async function sendIceCandidate(candidate) {
                     'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
                 },
                 body: JSON.stringify({
-                    callId: currentCall.id,
+                    callId: currentCall.callId,
                     candidate: candidate
                 })
             });
             
-            if (response.ok) {
-                console.log('✅ ICE кандидат отправлен успешно');
-            } else if (response.status === 404) {
-                console.log('ℹ️ Звонок не найден на сервере для ICE кандидата');
-            } else {
+            if (response.status === 404) {
+                console.log('ℹ️ Звонок не найден на сервере для ICE кандидата, сбрасываем');
+                endCall();
+                return;
+            }
+            
+            if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
+            
+            console.log('✅ ICE кандидат отправлен успешно');
         } catch (error) {
             console.error('❌ Ошибка отправки ICE кандидата:', error);
             
-            if (retryCount < maxRetries) {
-                retryCount++;
-                console.log(`🔄 Повторная попытка ${retryCount}/${maxRetries} через 1 секунду...`);
-                setTimeout(sendWithRetry, 1000);
+            if (retryCount < 3) {
+                console.log(`🔄 Повторная попытка ${retryCount + 1}/3 через 1 секунду...`);
+                setTimeout(() => sendWithRetry(retryCount + 1), 1000);
             } else {
-                console.error('❌ Не удалось отправить ICE кандидат после всех попыток');
+                console.log('❌ Превышено количество попыток отправки ICE кандидата');
             }
         }
     };
     
-    sendWithRetry();
+    await sendWithRetry();
 }
 
 // Показ интерфейса звонка
@@ -692,6 +695,35 @@ async function endCall() {
     }
 }
 
+// Получение статуса звонка
+async function getCallStatus(callId) {
+    try {
+        const response = await fetch(`/call/status/${callId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+            }
+        });
+        
+        if (response.status === 404) {
+            console.log('ℹ️ Звонок не найден на сервере, сбрасываем локально');
+            // Сбрасываем звонок локально если он не найден на сервере
+            endCall();
+            return null;
+        }
+        
+        if (!response.ok) {
+            console.error('❌ Ошибка сервера при получении статуса:', response.status);
+            return null;
+        }
+        
+        const data = await response.json();
+        return data.callSession;
+    } catch (error) {
+        console.error('❌ Ошибка получения статуса звонка:', error);
+        return null;
+    }
+}
+
 // Опрос статуса звонка
 function startCallStatusPolling() {
     if (callStatusPolling) {
@@ -699,29 +731,50 @@ function startCallStatusPolling() {
     }
     
     callStatusPolling = setInterval(async () => {
-        if (!currentCall) return;
-        
-        try {
-            const response = await fetch(`/call/status/${currentCall.id}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-                }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                handleCallStatusUpdate(data.callSession);
-            } else if (response.status === 404) {
-                console.log('ℹ️ Звонок не найден на сервере, но продолжаем локально');
-                // Не завершаем звонок сразу, даем время на восстановление
-            } else {
-                console.error('❌ Ошибка сервера при получении статуса:', response.status);
-            }
-        } catch (error) {
-            console.error('❌ Ошибка получения статуса звонка:', error);
-            // Не завершаем звонок при сетевых ошибках
+        if (!currentCall || !currentCall.callId) {
+            clearInterval(callStatusPolling);
+            return;
         }
-    }, 3000); // Увеличиваем интервал до 3 секунд
+        
+        const callSession = await getCallStatus(currentCall.callId);
+        
+        if (!callSession) {
+            // Звонок не найден или произошла ошибка - сбрасываем
+            console.log('ℹ️ Звонок не найден на сервере, сбрасываем локально');
+            endCall();
+            return;
+        }
+        
+        // Обрабатываем изменения статуса
+        if (callSession.status === 'rejected') {
+            console.log('📞 Звонок отклонен');
+            endCall();
+        } else if (callSession.status === 'ended') {
+            console.log('📞 Звонок завершен');
+            endCall();
+        } else if (callSession.status === 'active' && callSession.answer) {
+            // Обрабатываем ответ на звонок
+            if (!currentCall.answerReceived) {
+                currentCall.answerReceived = true;
+                await handleCallAnswer(callSession.answer);
+            }
+        }
+        
+        // Обрабатываем ICE кандидаты
+        if (callSession.iceCandidates) {
+            for (const iceCandidate of callSession.iceCandidates) {
+                if (!iceCandidate.processed && iceCandidate.from !== currentUser.login) {
+                    try {
+                        await peerConnection.addIceCandidate(iceCandidate.candidate);
+                        iceCandidate.processed = true;
+                        console.log('✅ ICE кандидат добавлен от:', iceCandidate.from);
+                    } catch (error) {
+                        console.error('❌ Ошибка добавления ICE кандидата:', error);
+                    }
+                }
+            }
+        }
+    }, 3000); // Проверяем каждые 3 секунды
 }
 
 // Остановка опроса статуса
