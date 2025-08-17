@@ -759,6 +759,133 @@ setInterval(() => {
     }
 }, 300000);
 
+// === ДОПОЛНИТЕЛЬНЫЕ ЭНДПОИНТЫ ===
+
+// Поиск пользователей по никнейму
+app.get('/search-user', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        const { nickname } = req.query;
+        if (!nickname) {
+            return res.status(400).json({ error: 'Никнейм не указан' });
+        }
+        
+        const searchResults = [];
+        for (const [login, userData] of users.entries()) {
+            if (login !== decoded.login && // Исключаем себя
+                (userData.nickname?.toLowerCase().includes(nickname.toLowerCase()) ||
+                 login.toLowerCase().includes(nickname.toLowerCase()))) {
+                searchResults.push({
+                    login: userData.login,
+                    nickname: userData.nickname || userData.login,
+                    email: userData.email
+                });
+            }
+        }
+        
+        res.json(searchResults);
+    } catch (error) {
+        console.error('Ошибка поиска пользователей:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Удаление контакта по логину
+app.delete('/contacts/:login', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        const contactLogin = req.params.login;
+        
+        if (contacts.has(decoded.login)) {
+            const userContacts = contacts.get(decoded.login);
+            const index = userContacts.indexOf(contactLogin);
+            if (index > -1) {
+                userContacts.splice(index, 1);
+            }
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Ошибка удаления контакта:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Отправка жалобы на пользователя
+app.post('/report/:login', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        const reportedLogin = req.params.login;
+        const { reason } = req.body;
+        
+        if (!users.has(reportedLogin)) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+        
+        // Здесь можно добавить логику сохранения жалоб
+        console.log(`Жалоба от ${decoded.login} на ${reportedLogin}: ${reason}`);
+        
+        res.json({ success: true, message: 'Жалоба отправлена' });
+    } catch (error) {
+        console.error('Ошибка отправки жалобы:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Обновление онлайн статуса (для поддержания активности)
+app.post('/ping', (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        // Обновляем время последней активности
+        activeConnections.set(decoded.login, { timestamp: Date.now() });
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Ошибка ping:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 // Создаем тестовых пользователей при первом запуске
 createTestUsers();
 
