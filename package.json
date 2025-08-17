@@ -10,8 +10,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "bcrypt": "^5.1.0",
-    "jsonwebtoken": "^9.0.0",
-    "socket.io": "^4.7.2"
+    "jsonwebtoken": "^9.0.0"
   },
   "keywords": ["chat", "encryption", "video-calls", "webrtc"],
   "author": "Your Name",
