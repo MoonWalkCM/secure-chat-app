@@ -6,6 +6,7 @@ let peerConnection = null;
 let callStatusPolling = null;
 let contacts = [];
 let currentUser = null;
+let pingInterval = null; // Добавляем pingInterval
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -30,9 +31,40 @@ async function initializeCalls() {
         // Начинаем опрос статуса звонков
         startCallStatusPolling();
         
+        // Начинаем ping для поддержания онлайн статуса
+        startPing();
+        
         console.log('Звонки инициализированы');
     } catch (error) {
         console.error('Ошибка инициализации звонков:', error);
+    }
+}
+
+// Функция ping для поддержания онлайн статуса
+function startPing() {
+    if (pingInterval) {
+        clearInterval(pingInterval);
+    }
+    
+    pingInterval = setInterval(async () => {
+        try {
+            await fetch('/ping', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                }
+            });
+        } catch (error) {
+            console.error('Ошибка ping:', error);
+        }
+    }, 15000); // Ping каждые 15 секунд
+}
+
+// Очистка ping при выходе
+function stopPing() {
+    if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
     }
 }
 
@@ -509,6 +541,9 @@ function exitFullscreen() {
 window.addEventListener('beforeunload', () => {
     if (callStatusPolling) {
         clearInterval(callStatusPolling);
+    }
+    if (pingInterval) {
+        clearInterval(pingInterval);
     }
     endCall();
 }); 
