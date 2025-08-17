@@ -224,7 +224,19 @@ async function startVideoCall(recipient) {
         
         // Создаем offer
         const offer = await peerConnection.createOffer();
+        console.log('📋 Создан offer:', {
+            type: offer.type,
+            sdpLength: offer.sdp ? offer.sdp.length : 0
+        });
+        
+        // Проверяем offer перед отправкой
+        if (!offer || !offer.type || !offer.sdp) {
+            console.error('❌ Неверный формат созданного offer:', offer);
+            throw new Error('Не удалось создать offer');
+        }
+        
         await peerConnection.setLocalDescription(offer);
+        console.log('✅ Локальное описание установлено');
         
         // Отправляем offer на сервер
         const response = await fetch('/call/offer', {
@@ -743,13 +755,33 @@ function startCallStatusPolling() {
         
         // Логируем состояние offer и answer для отладки
         if (callSession.offer) {
-            console.log('📋 Offer доступен:', callSession.offer.type);
+            console.log('📋 Offer доступен:', typeof callSession.offer);
+            if (typeof callSession.offer === 'string') {
+                try {
+                    const parsedOffer = JSON.parse(callSession.offer);
+                    console.log('📋 Offer распарсен:', parsedOffer.type);
+                } catch (e) {
+                    console.error('❌ Ошибка парсинга offer в статусе:', e);
+                }
+            } else {
+                console.log('📋 Offer уже объект:', callSession.offer.type);
+            }
         } else {
             console.log('⚠️ Offer отсутствует');
         }
         
         if (callSession.answer) {
-            console.log('📋 Answer доступен:', callSession.answer.type);
+            console.log('📋 Answer доступен:', typeof callSession.answer);
+            if (typeof callSession.answer === 'string') {
+                try {
+                    const parsedAnswer = JSON.parse(callSession.answer);
+                    console.log('📋 Answer распарсен:', parsedAnswer.type);
+                } catch (e) {
+                    console.error('❌ Ошибка парсинга answer в статусе:', e);
+                }
+            } else {
+                console.log('📋 Answer уже объект:', callSession.answer.type);
+            }
         } else {
             console.log('⚠️ Answer отсутствует');
         }
@@ -916,7 +948,47 @@ function hideIncomingCall() {
 // Принятие входящего звонка
 async function acceptIncomingCall(callSession) {
     try {
-        console.log('✅ Принимаем входящий звонок');
+        console.log('✅ Принимаем входящий звонок от:', callSession.caller);
+        console.log('📋 Данные звонка:', {
+            id: callSession.id,
+            status: callSession.status,
+            withVideo: callSession.withVideo,
+            offerType: typeof callSession.offer,
+            offerRaw: callSession.offer
+        });
+        
+        // Парсим offer из callSession
+        let offer;
+        if (typeof callSession.offer === 'string') {
+            try {
+                offer = JSON.parse(callSession.offer);
+                console.log('✅ Offer успешно распарсен из строки:', offer);
+            } catch (e) {
+                console.error('❌ Ошибка парсинга offer:', e);
+                throw new Error('Неверный формат offer');
+            }
+        } else {
+            offer = callSession.offer;
+            console.log('✅ Offer уже объект:', offer);
+        }
+        
+        // Проверяем, что offer не null и имеет правильную структуру
+        if (!offer) {
+            console.error('❌ Offer отсутствует (null/undefined)');
+            throw new Error('Offer отсутствует');
+        }
+        
+        if (!offer.type) {
+            console.error('❌ Offer не содержит type:', offer);
+            throw new Error('Offer не содержит type');
+        }
+        
+        if (!offer.sdp) {
+            console.error('❌ Offer не содержит sdp:', offer);
+            throw new Error('Offer не содержит sdp');
+        }
+        
+        console.log('✅ Offer успешно получен:', offer.type);
         
         // Создаем WebRTC соединение
         createPeerConnection();
@@ -939,27 +1011,6 @@ async function acceptIncomingCall(callSession) {
         // Показываем локальное видео
         localVideo.srcObject = stream;
         localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
-        
-        // Парсим offer из callSession
-        let offer;
-        if (typeof callSession.offer === 'string') {
-            try {
-                offer = JSON.parse(callSession.offer);
-            } catch (e) {
-                console.error('❌ Ошибка парсинга offer:', e);
-                throw new Error('Неверный формат offer');
-            }
-        } else {
-            offer = callSession.offer;
-        }
-        
-        // Проверяем, что offer не null и имеет правильную структуру
-        if (!offer || !offer.type || !offer.sdp) {
-            console.error('❌ Неверный формат offer:', offer);
-            throw new Error('Неверный формат offer - отсутствует type или sdp');
-        }
-        
-        console.log('✅ Offer успешно получен:', offer.type);
         
         // Устанавливаем удаленное описание
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
