@@ -3,18 +3,26 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 
 // Секреты
 const JWT_SECRET = process.env.JWT_SECRET || 'mwlauncher-secret-key-2024-fixed';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://secure-chat:iLMQjkum0b8rL5h2@cluster0.0s1thrl.mongodb.net/secure-chat?retryWrites=true&w=majority&appName=Cluster0';
 
-// In-memory storage для Vercel (вместо SQLite и MongoDB)
+// MongoDB клиент
+let db = null;
+let client = null;
+
+// In-memory storage для Vercel (вместо SQLite)
 const users = new Map();
 const messages = new Map();
 const contacts = new Map();
 const activeConnections = new Map(); // Для отслеживания онлайн статуса
-const callSessions = new Map(); // Для звонков
+
+// In-memory fallback для звонков
+const inMemoryCalls = new Map();
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
@@ -68,6 +76,48 @@ function decryptWithAES(encryptedData, key, iv) {
     let decrypted = decipher.update(encryptedData, 'base64', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
+}
+
+// Подключение к MongoDB
+async function connectToMongoDB() {
+    try {
+        if (!client) {
+            console.log('🔗 Попытка подключения к MongoDB...');
+            console.log('📡 URI:', MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'));
+            
+            client = new MongoClient(MONGODB_URI, {
+                serverSelectionTimeoutMS: 5000,
+                connectTimeoutMS: 10000,
+                socketTimeoutMS: 45000,
+            });
+            
+            await client.connect();
+            db = client.db('secure-chat');
+            await db.admin().ping();
+            console.log('✅ Подключение к MongoDB установлено');
+        }
+        return db;
+    } catch (error) {
+        console.error('❌ Ошибка подключения к MongoDB:', error.message);
+        console.log('⚠️ Используем in-memory storage как fallback');
+        return null;
+    }
+}
+
+// Получение коллекции звонков с fallback
+async function getCallsCollection() {
+    try {
+        const database = await connectToMongoDB();
+        if (database) {
+            return database.collection('calls');
+        } else {
+            console.log('⚠️ MongoDB недоступен, используем in-memory storage');
+            return null;
+        }
+    } catch (error) {
+        console.error('❌ Ошибка получения коллекции:', error.message);
+        return null;
+    }
 }
 
 // Создание тестовых пользователей
@@ -533,9 +583,51 @@ app.post('/call/offer', async (req, res) => {
             iceCandidates: []
         };
         
-        // Сохраняем в памяти
-        callSessions.set(callId, callSession);
-        console.log('📞 Создан новый звонок в памяти:', callId, 'от', caller.login, 'к', recipient);
+        // Пытаемся сохранить в MongoDB, если не получается - используем in-memory
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                // Очищаем старые звонки (старше 10 минут)
+                const now = Date.now();
+                await callsCollection.deleteMany({ timestamp: { $lt: now - 600000 } });
+                
+                // Проверяем, не занят ли получатель
+                const recipientSession = await callsCollection.findOne({
+                    participants: recipient,
+                    status: { $in: ['active', 'pending'] },
+                    timestamp: { $gt: now - 300000 }
+                });
+                
+                if (recipientSession) {
+                    console.log('🚫 Получатель занят:', recipient, 'занят звонком:', recipientSession.id);
+                    return res.status(409).json({ error: 'Пользователь занят другим звонком' });
+                }
+                
+                // Проверяем, не инициировал ли звонящий уже звонок
+                const callerSession = await callsCollection.findOne({
+                    caller: caller.login,
+                    status: { $in: ['active', 'pending'] },
+                    timestamp: { $gt: now - 300000 }
+                });
+                
+                if (callerSession) {
+                    console.log('🚫 Звонящий уже в звонке:', caller.login, 'звонок:', callerSession.id);
+                    return res.status(409).json({ error: 'У вас уже есть активный звонок' });
+                }
+                
+                // Сохраняем в MongoDB
+                await callsCollection.insertOne(callSession);
+                console.log('📞 Создан новый звонок в MongoDB:', callId, 'от', caller.login, 'к', recipient);
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB, используем in-memory:', mongoError.message);
+                inMemoryCalls.set(callId, callSession);
+                console.log('📞 Создан новый звонок в памяти:', callId, 'от', caller.login, 'к', recipient);
+            }
+        } else {
+            // Используем in-memory storage
+            inMemoryCalls.set(callId, callSession);
+            console.log('📞 Создан новый звонок в памяти:', callId, 'от', caller.login, 'к', recipient);
+        }
         
         res.json({ 
             success: true, 
@@ -565,7 +657,25 @@ app.post('/call/answer', async (req, res) => {
         const { callId, answer } = req.body;
         console.log('📞 Запрос на принятие звонка:', callId, 'от пользователя:', answerer.login);
         
-        let callSession = callSessions.get(callId);
+        let callSession = null;
+        
+        // Сначала пытаемся найти в MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                callSession = await callsCollection.findOne({ id: callId });
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при поиске звонка для ответа:', mongoError.message);
+            }
+        }
+        
+        // Если не найден в MongoDB, ищем в памяти
+        if (!callSession) {
+            callSession = inMemoryCalls.get(callId);
+            if (callSession) {
+                console.log('📞 Звонок найден в памяти для ответа:', callId);
+            }
+        }
         
         if (!callSession) {
             console.log('❌ Звонок не найден для принятия:', callId);
@@ -578,10 +688,33 @@ app.post('/call/answer', async (req, res) => {
         }
         
         // Обновляем звонок
-        callSession.answer = answer;
-        callSession.status = 'active';
-        callSessions.set(callId, callSession);
-        console.log('✅ Звонок принят в памяти:', callId, 'пользователем:', answerer.login);
+        if (callsCollection) {
+            try {
+                await callsCollection.updateOne(
+                    { id: callId },
+                    { 
+                        $set: { 
+                            answer: answer,
+                            status: 'active'
+                        }
+                    }
+                );
+                console.log('✅ Звонок принят в MongoDB:', callId, 'пользователем:', answerer.login);
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при обновлении звонка:', mongoError.message);
+                // Обновляем в памяти как fallback
+                callSession.answer = answer;
+                callSession.status = 'active';
+                inMemoryCalls.set(callId, callSession);
+                console.log('✅ Звонок принят в памяти:', callId, 'пользователем:', answerer.login);
+            }
+        } else {
+            // Обновляем в памяти
+            callSession.answer = answer;
+            callSession.status = 'active';
+            inMemoryCalls.set(callId, callSession);
+            console.log('✅ Звонок принят в памяти:', callId, 'пользователем:', answerer.login);
+        }
         
         res.json({ 
             success: true, 
@@ -609,7 +742,7 @@ app.post('/call/reject', async (req, res) => {
         
         const { callId } = req.body;
         
-        let callSession = callSessions.get(callId);
+        let callSession = inMemoryCalls.get(callId);
         
         if (!callSession) {
             return res.status(404).json({ error: 'Звонок не найден' });
@@ -621,7 +754,7 @@ app.post('/call/reject', async (req, res) => {
         
         // Обновляем статус
         callSession.status = 'rejected';
-        callSessions.set(callId, callSession);
+        inMemoryCalls.set(callId, callSession);
         console.log('Звонок отклонен в памяти:', callId, 'пользователем:', rejecter.login);
         
         res.json({ 
@@ -650,7 +783,7 @@ app.post('/call/end', async (req, res) => {
         
         const { callId } = req.body;
         
-        let callSession = callSessions.get(callId);
+        let callSession = inMemoryCalls.get(callId);
         
         if (!callSession) {
             console.log('Звонок не найден для завершения:', callId);
@@ -663,7 +796,7 @@ app.post('/call/end', async (req, res) => {
         
         // Обновляем статус
         callSession.status = 'ended';
-        callSessions.set(callId, callSession);
+        inMemoryCalls.set(callId, callSession);
         console.log('Звонок завершен в памяти:', callId, 'пользователем:', ender.login);
         
         res.json({ 
@@ -692,7 +825,7 @@ app.post('/call/ice-candidate', async (req, res) => {
         
         const { callId, candidate } = req.body;
         
-        let callSession = callSessions.get(callId);
+        let callSession = inMemoryCalls.get(callId);
         
         if (!callSession) {
             return res.status(404).json({ error: 'Звонок не найден' });
@@ -714,7 +847,7 @@ app.post('/call/ice-candidate', async (req, res) => {
             callSession.iceCandidates = [];
         }
         callSession.iceCandidates.push(iceCandidate);
-        callSessions.set(callId, callSession);
+        inMemoryCalls.set(callId, callSession);
         console.log('ICE кандидат сохранен в памяти от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
         
         res.json({ 
@@ -744,7 +877,25 @@ app.get('/call/status/:callId', async (req, res) => {
         const { callId } = req.params;
         console.log('🔍 Запрос статуса звонка:', callId, 'от пользователя:', user.login);
         
-        let callSession = callSessions.get(callId);
+        let callSession = null;
+        
+        // Сначала пытаемся найти в MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                callSession = await callsCollection.findOne({ id: callId });
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при поиске звонка:', mongoError.message);
+            }
+        }
+        
+        // Если не найден в MongoDB, ищем в памяти
+        if (!callSession) {
+            callSession = inMemoryCalls.get(callId);
+            if (callSession) {
+                console.log('📞 Звонок найден в памяти:', callId);
+            }
+        }
         
         if (!callSession) {
             console.log('❌ Звонок не найден для статуса:', callId);
@@ -793,8 +944,21 @@ app.get('/call/incoming', async (req, res) => {
         
         let userCalls = [];
         
-        // Сначала пытаемся получить из памяти
-        for (const [callId, callSession] of callSessions.entries()) {
+        // Сначала пытаемся получить из MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                userCalls = await callsCollection.find({
+                    recipient: user.login,
+                    status: 'pending'
+                }).toArray();
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при получении входящих звонков:', mongoError.message);
+            }
+        }
+        
+        // Добавляем звонки из памяти
+        for (const [callId, callSession] of inMemoryCalls.entries()) {
             if (callSession.recipient === user.login && callSession.status === 'pending') {
                 userCalls.push(callSession);
             }
@@ -828,9 +992,20 @@ app.post('/call/clear-all', async (req, res) => {
         
         let deletedCount = 0;
         
+        // Очищаем MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                const result = await callsCollection.deleteMany({});
+                deletedCount += result.deletedCount;
+            } catch (mongoError) {
+                console.error('❌ Ошибка очистки MongoDB:', mongoError.message);
+            }
+        }
+        
         // Очищаем память
-        const memoryCount = callSessions.size;
-        callSessions.clear();
+        const memoryCount = inMemoryCalls.size;
+        inMemoryCalls.clear();
         deletedCount += memoryCount;
         
         console.log(`Пользователь ${user.login} очистил все звонки (${deletedCount} шт.)`);
@@ -970,27 +1145,42 @@ app.post('/ping', (req, res) => {
 // Создаем тестовых пользователей при первом запуске
 createTestUsers();
 
+// Инициализируем MongoDB при запуске
+connectToMongoDB().then(() => {
+    console.log('🚀 Сервер готов к работе с MongoDB (или in-memory fallback)');
+}).catch(error => {
+    console.error('❌ Ошибка инициализации MongoDB:', error);
+});
+
 // Очистка старых звонков (каждые 10 минут)
-setInterval(() => {
+setInterval(async () => {
     try {
-        const now = Date.now();
-        let deletedCount = 0;
-        
-        for (const [callId, callSession] of callSessions.entries()) {
-            if (now - callSession.timestamp > 1800000) { // 30 минут
-                callSessions.delete(callId);
-                deletedCount++;
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            const now = Date.now();
+            const result = await callsCollection.deleteMany({ 
+                timestamp: { $lt: now - 1800000 } // 30 минут
+            });
+            if (result.deletedCount > 0) {
+                console.log(`🧹 Автоматически очищено ${result.deletedCount} старых звонков из MongoDB`);
             }
         }
         
-        if (deletedCount > 0) {
-            console.log(`🧹 Автоматически очищено ${deletedCount} старых звонков`);
+        // Также очищаем in-memory звонки
+        const now = Date.now();
+        let deletedInMemory = 0;
+        for (const [callId, callSession] of inMemoryCalls.entries()) {
+            if (now - callSession.timestamp > 1800000) { // 30 минут
+                inMemoryCalls.delete(callId);
+                deletedInMemory++;
+            }
+        }
+        if (deletedInMemory > 0) {
+            console.log(`🧹 Автоматически очищено ${deletedInMemory} старых звонков из памяти`);
         }
     } catch (error) {
         console.error('❌ Ошибка автоматической очистки звонков:', error);
     }
 }, 600000); // Каждые 10 минут
-
-console.log('🚀 Сервер готов к работе с in-memory storage');
 
 module.exports = app; 
