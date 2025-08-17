@@ -3,8 +3,17 @@ const path = require('path');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 // Секреты
 const JWT_SECRET = process.env.JWT_SECRET || 'mwlauncher-secret-key-2024-fixed';
@@ -15,6 +24,7 @@ const messages = new Map();
 const contacts = new Map();
 const activeConnections = new Map(); // Для отслеживания онлайн статуса
 const callSessions = new Map(); // Для управления звонками
+const socketUsers = new Map(); // Для связи socket.id с пользователями
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
@@ -520,11 +530,11 @@ app.post('/call/offer', (req, res) => {
             return res.status(404).json({ error: 'Получатель не найден' });
         }
         
-        // Очищаем старые звонки (старше 5 минут)
+        // Очищаем только очень старые звонки (старше 30 минут)
         const now = Date.now();
         for (const [callId, session] of callSessions.entries()) {
-            if (now - session.timestamp > 300000) { // 5 минут
-                console.log('Удаляем старый звонок:', callId);
+            if (now - session.timestamp > 1800000) { // 30 минут
+                console.log('🗑️ Удаляем очень старый звонок:', callId);
                 callSessions.delete(callId);
             }
         }
@@ -533,11 +543,11 @@ app.post('/call/offer', (req, res) => {
         const recipientSession = Array.from(callSessions.values()).find(session => 
             session.participants.includes(recipient) && 
             (session.status === 'active' || session.status === 'pending') &&
-            (now - session.timestamp) < 60000 // Только звонки младше 1 минуты
+            (now - session.timestamp) < 300000 // Только звонки младше 5 минут
         );
         
         if (recipientSession) {
-            console.log('Получатель занят:', recipient, 'занят звонком:', recipientSession.id);
+            console.log('🚫 Получатель занят:', recipient, 'занят звонком:', recipientSession.id);
             return res.status(409).json({ error: 'Пользователь занят другим звонком' });
         }
         
@@ -545,11 +555,11 @@ app.post('/call/offer', (req, res) => {
         const callerSession = Array.from(callSessions.values()).find(session => 
             session.caller === caller.login && 
             (session.status === 'active' || session.status === 'pending') &&
-            (now - session.timestamp) < 60000 // Только звонки младше 1 минуты
+            (now - session.timestamp) < 300000 // Только звонки младше 5 минут
         );
         
         if (callerSession) {
-            console.log('Звонящий уже в звонке:', caller.login, 'звонок:', callerSession.id);
+            console.log('🚫 Звонящий уже в звонке:', caller.login, 'звонок:', callerSession.id);
             return res.status(409).json({ error: 'У вас уже есть активный звонок' });
         }
         
@@ -567,7 +577,8 @@ app.post('/call/offer', (req, res) => {
         };
         
         callSessions.set(callId, callSession);
-        console.log('Создан новый звонок:', callId, 'от', caller.login, 'к', recipient);
+        console.log('📞 Создан новый звонок:', callId, 'от', caller.login, 'к', recipient);
+        console.log('📊 Всего звонков в памяти:', callSessions.size);
         
         res.json({ 
             success: true, 
@@ -575,7 +586,7 @@ app.post('/call/offer', (req, res) => {
             message: 'Звонок инициирован'
         });
     } catch (error) {
-        console.error('Ошибка инициации звонка:', error);
+        console.error('❌ Ошибка инициации звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -595,26 +606,32 @@ app.post('/call/answer', (req, res) => {
         }
         
         const { callId, answer } = req.body;
+        console.log('📞 Запрос на принятие звонка:', callId, 'от пользователя:', answerer.login);
+        
         const callSession = callSessions.get(callId);
         
         if (!callSession) {
+            console.log('❌ Звонок не найден для принятия:', callId);
+            console.log('📋 Доступные звонки:', Array.from(callSessions.keys()));
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
         if (callSession.recipient !== answerer.login) {
+            console.log('🚫 Пользователь не авторизован для принятия звонка:', answerer.login);
             return res.status(403).json({ error: 'Не авторизован для ответа на этот звонок' });
         }
         
         callSession.answer = answer;
         callSession.status = 'active';
-        console.log('Звонок принят:', callId, 'пользователем:', answerer.login);
+        console.log('✅ Звонок принят:', callId, 'пользователем:', answerer.login);
+        console.log('📊 Всего звонков в памяти:', callSessions.size);
         
         res.json({ 
             success: true, 
             message: 'Звонок принят'
         });
     } catch (error) {
-        console.error('Ошибка ответа на звонок:', error);
+        console.error('❌ Ошибка ответа на звонок:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -759,16 +776,23 @@ app.get('/call/status/:callId', (req, res) => {
         }
         
         const { callId } = req.params;
+        console.log('🔍 Запрос статуса звонка:', callId, 'от пользователя:', user.login);
+        console.log('📊 Всего звонков в памяти:', callSessions.size);
+        
         const callSession = callSessions.get(callId);
         
         if (!callSession) {
-            console.log('Звонок не найден для статуса:', callId);
+            console.log('❌ Звонок не найден для статуса:', callId);
+            console.log('📋 Доступные звонки:', Array.from(callSessions.keys()));
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
         if (!callSession.participants.includes(user.login)) {
+            console.log('🚫 Пользователь не авторизован для звонка:', user.login);
             return res.status(403).json({ error: 'Не авторизован для этого звонка' });
         }
+        
+        console.log('✅ Статус звонка найден:', callSession.status);
         
         res.json({ 
             success: true, 
@@ -784,7 +808,7 @@ app.get('/call/status/:callId', (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Ошибка получения статуса звонка:', error);
+        console.error('❌ Ошибка получения статуса звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -809,30 +833,33 @@ app.get('/call/incoming', (req, res) => {
         );
         
         if (userCalls.length > 0) {
-            console.log('Входящие звонки для', user.login, ':', userCalls.length);
+            console.log('📞 Входящие звонки для', user.login, ':', userCalls.length);
+            console.log('📋 ID звонков:', userCalls.map(call => call.id));
         }
         
         res.json(userCalls);
     } catch (error) {
-        console.error('Ошибка получения входящих звонков:', error);
+        console.error('❌ Ошибка получения входящих звонков:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 
-// Очистка старых звонков (каждые 5 минут)
+// Очистка старых звонков (каждые 30 минут)
 setInterval(() => {
     const now = Date.now();
     let cleanedCount = 0;
     for (const [callId, session] of callSessions.entries()) {
-        if (now - session.timestamp > 300000) { // 5 минут
+        // Удаляем только очень старые звонки (старше 60 минут)
+        if (now - session.timestamp > 3600000) { // 60 минут
             callSessions.delete(callId);
             cleanedCount++;
+            console.log('🗑️ Автоматически удален старый звонок:', callId);
         }
     }
     if (cleanedCount > 0) {
-        console.log(`Очищено ${cleanedCount} старых звонков`);
+        console.log(`🧹 Автоматически очищено ${cleanedCount} старых звонков`);
     }
-}, 300000);
+}, 1800000); // Каждые 30 минут
 
 // Принудительная очистка всех звонков (для отладки)
 app.post('/call/clear-all', (req, res) => {
@@ -1022,4 +1049,4 @@ app.post('/ping', (req, res) => {
 // Создаем тестовых пользователей при первом запуске
 createTestUsers();
 
-module.exports = app; 
+module.exports = server; 
