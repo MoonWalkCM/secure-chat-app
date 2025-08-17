@@ -219,6 +219,31 @@ body {
     transform: none;
 }
 
+/* Отладочные элементы управления */
+.debug-controls {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.debug-btn {
+    width: 100%;
+    padding: 10px 15px;
+    background: #f56565;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.debug-btn:hover {
+    background: #e53e3e;
+    transform: translateY(-1px);
+}
+
 /* Интерфейс звонка */
 .call-interface {
     background: rgba(255, 255, 255, 0.95);
