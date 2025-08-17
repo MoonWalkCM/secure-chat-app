@@ -8,6 +8,7 @@ let contacts = [];
 let currentUser = null;
 let pingInterval = null;
 let callTimer = null;
+let ringtoneInterval = null; // Добавляем переменную для интервала звонка
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -300,51 +301,73 @@ async function sendIceCandidate(candidate) {
     }
 }
 
-// Завершение звонка
+// Улучшенная функция завершения звонка
 async function endCall() {
-    console.log('🔚 Завершаем звонок');
-    
-    if (currentCall) {
-        try {
-            await fetch('/call/end', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-                },
-                body: JSON.stringify({
-                    callId: currentCall.id
-                })
-            });
-        } catch (error) {
-            console.error('Ошибка завершения звонка:', error);
+    try {
+        console.log('🔚 Завершаем звонок');
+        
+        if (currentCall) {
+            // Отправляем запрос на завершение звонка
+            try {
+                const response = await fetch('/call/end', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                    },
+                    body: JSON.stringify({ callId: currentCall.id })
+                });
+                
+                if (response.ok) {
+                    console.log('✅ Запрос на завершение звонка отправлен');
+                } else {
+                    console.warn('⚠️ Ошибка отправки запроса на завершение:', response.status);
+                }
+            } catch (error) {
+                console.error('❌ Ошибка отправки запроса на завершение:', error);
+            }
         }
+        
+        // Останавливаем локальные медиа потоки
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                track.stop();
+                console.log('🛑 Остановлен трек:', track.kind);
+            });
+            localStream = null;
+        }
+        
+        // Закрываем peer connection
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+            console.log('🔌 PeerConnection закрыт');
+        }
+        
+        // Очищаем интервалы
+        if (callStatusPolling) {
+            clearInterval(callStatusPolling);
+            callStatusPolling = null;
+        }
+        if (callTimer) {
+            clearInterval(callTimer);
+            callTimer = null;
+        }
+        
+        // Скрываем интерфейс звонка
+        hideCallInterface();
+        
+        // Сбрасываем переменные
+        currentCall = null;
+        currentUser = null;
+        
+        // Перезагружаем контакты
+        await loadContacts();
+        
+        console.log('✅ Звонок завершен');
+    } catch (error) {
+        console.error('❌ Ошибка завершения звонка:', error);
     }
-    
-    // Очищаем ресурсы
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    
-    currentCall = null;
-    remoteStream = null;
-    
-    // Останавливаем таймер
-    stopCallTimer();
-    
-    // Скрываем интерфейс звонка
-    hideCallInterface();
-    
-    // Перезагружаем контакты
-    await loadContacts();
-    
-    console.log('✅ Звонок завершен');
 }
 
 // Получение статуса звонка
@@ -571,46 +594,79 @@ function hideIncomingCall() {
     stopRingtone();
 }
 
-// Воспроизведение звука звонка
-let ringtone = null;
-
+// Функция воспроизведения звонка
 function playRingtone() {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
-    
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 1);
-    
-    ringtone = setInterval(() => {
-        const osc = audioContext.createOscillator();
-        const gain = audioContext.createGain();
+    try {
+        // Создаем AudioContext только при необходимости
+        if (!window.audioContext) {
+            window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
         
-        osc.connect(gain);
-        gain.connect(audioContext.destination);
-        
-        osc.frequency.setValueAtTime(800, audioContext.currentTime);
-        osc.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
-        
-        gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-        
-        osc.start();
-        osc.stop(audioContext.currentTime + 1);
-    }, 2000);
+        // Проверяем состояние AudioContext
+        if (window.audioContext.state === 'suspended') {
+            console.log('🔊 AudioContext приостановлен, пытаемся возобновить...');
+            window.audioContext.resume().then(() => {
+                console.log('✅ AudioContext возобновлен');
+                startRingtone();
+            }).catch(error => {
+                console.error('❌ Ошибка возобновления AudioContext:', error);
+            });
+        } else {
+            startRingtone();
+        }
+    } catch (error) {
+        console.error('❌ Ошибка создания AudioContext:', error);
+    }
 }
 
+function startRingtone() {
+    try {
+        const audioContext = window.audioContext;
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 1);
+        
+        // Повторяем каждую секунду
+        ringtoneInterval = setInterval(() => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+            oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 1);
+        }, 1000);
+        
+        console.log('🔊 Звонок начал играть');
+    } catch (error) {
+        console.error('❌ Ошибка воспроизведения звонка:', error);
+    }
+}
+
+// Функция остановки звонка
 function stopRingtone() {
-    if (ringtone) {
-        clearInterval(ringtone);
-        ringtone = null;
+    if (ringtoneInterval) {
+        clearInterval(ringtoneInterval);
+        ringtoneInterval = null;
+        console.log('🔇 Звонок остановлен');
     }
 }
 
