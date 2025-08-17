@@ -285,6 +285,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 5;
     let messagePollingInterval = null;
+    let pingInterval = null; // Добавляем pingInterval
     
     // Переменные для чата
     const currentLogin = JSON.parse(atob(token.split('.')[1])).login;
@@ -324,12 +325,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error('Ошибка при получении сообщений:', error);
             }
         }, 3000); // Проверяем каждые 3 секунды
+        
+        // Добавляем ping для поддержания онлайн статуса
+        pingInterval = setInterval(async () => {
+            try {
+                await fetch('/ping', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+                    }
+                });
+            } catch (error) {
+                console.error('Ошибка ping:', error);
+            }
+        }, 15000); // Ping каждые 15 секунд
     }
 
     function stopMessagePolling() {
         if (messagePollingInterval) {
             clearInterval(messagePollingInterval);
             messagePollingInterval = null;
+        }
+        if (pingInterval) { // Очищаем pingInterval
+            clearInterval(pingInterval);
+            pingInterval = null;
         }
     }
 
