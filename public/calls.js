@@ -7,6 +7,7 @@ let callStatusPolling = null;
 let contacts = [];
 let currentUser = null;
 let pingInterval = null;
+let callTimer = null;
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -95,6 +96,17 @@ function renderContacts() {
 
     contactsContainer.innerHTML = '';
     
+    if (contacts.length === 0) {
+        contactsContainer.innerHTML = `
+            <div class="placeholder">
+                <i class="fas fa-users"></i>
+                <h3>Нет контактов</h3>
+                <p>Добавьте контакты для начала звонков</p>
+            </div>
+        `;
+        return;
+    }
+    
     contacts.forEach(contact => {
         const contactElement = document.createElement('div');
         contactElement.className = 'contact-item';
@@ -126,7 +138,10 @@ async function getIceServers() {
         return data.iceServers;
     } catch (error) {
         console.error('Ошибка получения ICE серверов:', error);
-        return [];
+        return [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ];
     }
 }
 
@@ -166,8 +181,10 @@ function createPeerConnection() {
         console.log('Состояние соединения:', pc.connectionState);
         if (pc.connectionState === 'connected') {
             updateCallStatus('Соединение установлено');
+            startCallTimer();
         } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
             updateCallStatus('Соединение потеряно');
+            stopCallTimer();
         }
     };
     
@@ -227,7 +244,7 @@ async function startCall(recipient, withVideo) {
             
             // Показываем интерфейс звонка
             showCallInterface();
-            updateCallStatus('Ожидание ответа...');
+            updateCallStatus('Набор...');
             
             console.log('Звонок инициирован:', data.callId);
         }
@@ -292,6 +309,9 @@ async function endCall() {
     
     currentCall = null;
     remoteStream = null;
+    
+    // Останавливаем таймер
+    stopCallTimer();
     
     // Скрываем интерфейс звонка
     hideCallInterface();
@@ -560,8 +580,14 @@ function handleCallStatusUpdate(callStatus) {
 // Показ интерфейса звонка
 function showCallInterface() {
     const callInterface = document.getElementById('call-interface');
+    const noCallPlaceholder = document.getElementById('no-call-placeholder');
+    
     if (callInterface) {
         callInterface.style.display = 'flex';
+    }
+    
+    if (noCallPlaceholder) {
+        noCallPlaceholder.style.display = 'none';
     }
     
     const localVideo = document.getElementById('local-video');
@@ -574,8 +600,14 @@ function showCallInterface() {
 // Скрытие интерфейса звонка
 function hideCallInterface() {
     const callInterface = document.getElementById('call-interface');
+    const noCallPlaceholder = document.getElementById('no-call-placeholder');
+    
     if (callInterface) {
         callInterface.style.display = 'none';
+    }
+    
+    if (noCallPlaceholder) {
+        noCallPlaceholder.style.display = 'flex';
     }
     
     const localVideo = document.getElementById('local-video');
@@ -592,6 +624,28 @@ function updateCallStatus(status) {
     }
 }
 
+// Таймер звонка
+function startCallTimer() {
+    if (callTimer) {
+        clearInterval(callTimer);
+    }
+    
+    const startTime = Date.now();
+    callTimer = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const minutes = Math.floor(elapsed / 60000);
+        const seconds = Math.floor((elapsed % 60000) / 1000);
+        updateCallStatus(`Звонок активен (${minutes}:${seconds.toString().padStart(2, '0')})`);
+    }, 1000);
+}
+
+function stopCallTimer() {
+    if (callTimer) {
+        clearInterval(callTimer);
+        callTimer = null;
+    }
+}
+
 // Управление микрофоном
 function toggleMute() {
     if (localStream) {
@@ -601,6 +655,7 @@ function toggleMute() {
             const muteBtn = document.getElementById('mute-btn');
             if (muteBtn) {
                 muteBtn.innerHTML = audioTrack.enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
+                muteBtn.style.background = audioTrack.enabled ? '#a0aec0' : '#f56565';
             }
         }
     }
@@ -615,6 +670,7 @@ function toggleVideo() {
             const videoBtn = document.getElementById('video-btn');
             if (videoBtn) {
                 videoBtn.innerHTML = videoTrack.enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
+                videoBtn.style.background = videoTrack.enabled ? '#a0aec0' : '#f56565';
             }
         }
     }
