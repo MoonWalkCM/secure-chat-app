@@ -9,6 +9,8 @@ let currentUser = null;
 let pingInterval = null;
 let callTimer = null;
 let ringtoneInterval = null; // Добавляем переменную для интервала звонка
+let incomingCallShown = false; // Добавляем флаг для отслеживания показа входящего звонка
+let processedCallIds = new Set(); // Добавляем Set для отслеживания обработанных звонков
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
@@ -131,52 +133,39 @@ function renderContacts() {
     });
 }
 
-// Создание RTCPeerConnection
+// Создание peer connection
 function createPeerConnection() {
     const config = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' }
-        ]
+        ],
+        iceCandidatePoolSize: 10
     };
     
     const pc = new RTCPeerConnection(config);
     
-    // Обработка удаленного потока
+    // Обработчик получения удаленных треков
     pc.ontrack = (event) => {
         console.log('=== ПОЛУЧЕН УДАЛЕННЫЙ ПОТОК ===');
         console.log('Streams:', event.streams);
         console.log('Track:', event.track);
         
-        if (event.streams && event.streams.length > 0) {
-            remoteStream = event.streams[0];
+        if (event.streams && event.streams[0]) {
             const remoteVideo = document.getElementById('remote-video');
             if (remoteVideo) {
+                remoteVideo.srcObject = event.streams[0];
                 console.log('Устанавливаем удаленное видео');
-                remoteVideo.srcObject = remoteStream;
                 
                 // Принудительно воспроизводим видео
-                remoteVideo.onloadedmetadata = () => {
-                    console.log('Метаданные загружены, воспроизводим');
-                    remoteVideo.play().then(() => {
-                        console.log('Удаленное видео воспроизводится');
-                    }).catch(e => {
-                        console.error('Ошибка воспроизведения:', e);
-                    });
-                };
-                
-                // Дополнительная проверка
                 setTimeout(() => {
-                    if (remoteVideo.paused) {
-                        console.log('Принудительно воспроизводим видео');
-                        remoteVideo.play().catch(e => console.error('Ошибка принудительного воспроизведения:', e));
-                    }
-                }, 1000);
+                    forceVideoPlay();
+                }, 100);
             }
         }
     };
     
-    // Обработка ICE кандидатов
+    // Обработчик ICE кандидатов
     pc.onicecandidate = (event) => {
         if (event.candidate) {
             console.log('Отправляем ICE кандидат:', event.candidate.type);
@@ -184,23 +173,17 @@ function createPeerConnection() {
         }
     };
     
-    // Обработка состояния соединения
+    // Обработчики состояния соединения
     pc.onconnectionstatechange = () => {
-        console.log('=== СОСТОЯНИЕ СОЕДИНЕНИЯ:', pc.connectionState, '===');
-        if (pc.connectionState === 'connected') {
-            console.log('🎉 WebRTC соединение установлено!');
-            updateCallStatus('Соединение установлено');
-            startCallTimer();
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-            console.log('❌ WebRTC соединение потеряно');
-            updateCallStatus('Соединение потеряно');
-            stopCallTimer();
-        }
+        console.log('🔗 Состояние соединения:', pc.connectionState);
     };
     
-    // Обработка состояния ICE соединения
     pc.oniceconnectionstatechange = () => {
-        console.log('=== ICE СОСТОЯНИЕ:', pc.iceConnectionState, '===');
+        console.log('🧊 Состояние ICE соединения:', pc.iceConnectionState);
+    };
+    
+    pc.onicegatheringstatechange = () => {
+        console.log('📡 Состояние сбора ICE:', pc.iceGatheringState);
     };
     
     return pc;
@@ -306,6 +289,10 @@ async function endCall() {
     try {
         console.log('🔚 Завершаем звонок');
         
+        // Очищаем флаги
+        incomingCallShown = false;
+        processedCallIds.clear();
+        
         if (currentCall) {
             // Отправляем запрос на завершение звонка
             try {
@@ -320,6 +307,8 @@ async function endCall() {
                 
                 if (response.ok) {
                     console.log('✅ Запрос на завершение звонка отправлен');
+                } else if (response.status === 404) {
+                    console.log('ℹ️ Звонок уже завершен на сервере');
                 } else {
                     console.warn('⚠️ Ошибка отправки запроса на завершение:', response.status);
                 }
@@ -382,37 +371,41 @@ async function getCallStatus(callId) {
         if (response.ok) {
             const data = await response.json();
             return data.callSession;
+        } else if (response.status === 404) {
+            console.log('ℹ️ Звонок не найден на сервере:', callId);
+            return null;
+        } else {
+            console.error('❌ Ошибка получения статуса звонка:', response.status);
+            return null;
         }
     } catch (error) {
-        console.error('Ошибка получения статуса звонка:', error);
+        console.error('❌ Ошибка запроса статуса звонка:', error);
+        return null;
     }
-    return null;
 }
 
-// Опрос статуса звонков
+// Запуск опроса статуса звонков
 function startCallStatusPolling() {
     callStatusPolling = setInterval(async () => {
         try {
-            // Проверяем входящие звонки
-            await checkIncomingCalls();
+            await checkIncomingCalls(); // Проверяем входящие звонки
             
-            // Проверяем статус активного звонка
             if (currentCall) {
                 const callStatus = await getCallStatus(currentCall.id);
                 if (callStatus) {
                     handleCallStatusUpdate(callStatus);
-                    
-                    // Обрабатываем ICE кандидаты
+                    // Обрабатываем ICE кандидаты от сервера
                     if (callStatus.iceCandidates && callStatus.iceCandidates.length > 0) {
                         await processIceCandidates(callStatus.iceCandidates);
                     }
                 } else {
-                    // Звонок не найден, завершаем
+                    // Звонок не найден на сервере, завершаем локально
+                    console.log('🔄 Звонок не найден на сервере, завершаем локально');
                     endCall();
                 }
             }
         } catch (error) {
-            console.error('Ошибка опроса статуса звонков:', error);
+            console.error('❌ Ошибка опроса статуса звонков:', error);
         }
     }, 2000);
 }
@@ -447,15 +440,20 @@ async function checkIncomingCalls() {
         if (response.ok) {
             const incomingCalls = await response.json();
             
-            for (const call of incomingCalls) {
-                if (call.recipient === currentUser && call.status === 'pending' && !currentCall) {
-                    showIncomingCall(call);
-                    break;
-                }
+            // Фильтруем только новые звонки
+            const newCalls = incomingCalls.filter(call => !processedCallIds.has(call.id));
+            
+            if (newCalls.length > 0 && !incomingCallShown) {
+                const call = newCalls[0]; // Берем первый новый звонок
+                processedCallIds.add(call.id); // Отмечаем как обработанный
+                incomingCallShown = true; // Устанавливаем флаг показа
+                
+                console.log('📞 Входящий звонок от:', call.caller);
+                showIncomingCall(call);
             }
         }
     } catch (error) {
-        console.error('Ошибка проверки входящих звонков:', error);
+        console.error('❌ Ошибка проверки входящих звонков:', error);
     }
 }
 
@@ -592,6 +590,8 @@ function hideIncomingCall() {
         overlay.remove();
     }
     stopRingtone();
+    incomingCallShown = false; // Сбрасываем флаг показа
+    console.log('🔇 Входящий звонок скрыт');
 }
 
 // Функция воспроизведения звонка
@@ -674,21 +674,19 @@ function stopRingtone() {
 function handleCallStatusUpdate(callStatus) {
     console.log('📊 Обновление статуса звонка:', callStatus.status);
     
-    if (callStatus.status === 'rejected') {
-        alert('Звонок отклонен');
-        endCall();
-    } else if (callStatus.status === 'ended') {
-        alert('Звонок завершен');
-        endCall();
+    if (callStatus.status === 'rejected' || callStatus.status === 'ended') {
+        if (currentCall) {
+            console.log('🔄 Звонок завершен сервером, завершаем локально');
+            endCall();
+        }
     } else if (callStatus.status === 'active' && currentCall && currentCall.status === 'pending') {
-        // Звонок принят
-        console.log('🎉 Звонок принят, устанавливаем соединение');
-        if (callStatus.answer) {
+        // Звонок принят, устанавливаем удаленное описание (answer)
+        if (callStatus.answer && peerConnection) {
             peerConnection.setRemoteDescription(new RTCSessionDescription(callStatus.answer))
                 .then(() => {
-                    console.log('✅ Удаленное описание (answer) установлено');
                     currentCall.status = 'active';
                     updateCallStatus('Звонок активен');
+                    console.log('✅ Удаленное описание установлено');
                 })
                 .catch(error => {
                     console.error('❌ Ошибка установки соединения:', error);
@@ -793,6 +791,25 @@ function toggleVideo() {
                 videoBtn.innerHTML = videoTrack.enabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
                 videoBtn.style.background = videoTrack.enabled ? '#a0aec0' : '#f56565';
             }
+        }
+    }
+}
+
+// Принудительное воспроизведение видео
+function forceVideoPlay() {
+    const remoteVideo = document.getElementById('remote-video');
+    if (remoteVideo && remoteVideo.srcObject) {
+        try {
+            console.log('🎥 Принудительно воспроизводим видео');
+            remoteVideo.play().catch(error => {
+                if (error.name === 'AbortError') {
+                    console.log('ℹ️ Воспроизведение прервано (нормально при завершении звонка)');
+                } else {
+                    console.error('❌ Ошибка принудительного воспроизведения:', error);
+                }
+            });
+        } catch (error) {
+            console.error('❌ Ошибка принудительного воспроизведения:', error);
         }
     }
 }
