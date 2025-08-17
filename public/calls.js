@@ -154,13 +154,27 @@ async function startCall(recipient, withVideo) {
         // Обработка ICE кандидатов
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('Отправляем ICE кандидат');
                 sendIceCandidate(event.candidate);
+            }
+        };
+        
+        // Обработка изменения состояния соединения
+        peerConnection.onconnectionstatechange = () => {
+            console.log('Состояние соединения:', peerConnection.connectionState);
+            if (peerConnection.connectionState === 'connected') {
+                console.log('WebRTC соединение установлено!');
+                updateCallStatus('Соединение установлено');
+            } else if (peerConnection.connectionState === 'failed') {
+                console.error('WebRTC соединение не удалось');
+                updateCallStatus('Ошибка соединения');
             }
         };
         
         // Создаем offer
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
+        console.log('Локальное описание установлено');
         
         // Отправляем offer на сервер
         const response = await fetch('/call/offer', {
@@ -178,26 +192,27 @@ async function startCall(recipient, withVideo) {
         
         if (response.ok) {
             const data = await response.json();
+            
+            // Устанавливаем текущий звонок
             currentCall = {
                 id: data.callId,
+                caller: currentUser,
                 recipient: recipient,
-                withVideo: withVideo,
-                status: 'pending'
+                status: 'pending',
+                withVideo: withVideo
             };
             
+            // Показываем интерфейс звонка
             showCallInterface();
-            updateCallStatus('Исходящий звонок...');
+            updateCallStatus('Ожидание ответа...');
             
-            console.log('Звонок инициирован:', data.callId);
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Ошибка инициации звонка');
+            // Начинаем опрос статуса звонка и ICE кандидатов
+            startCallStatusPolling();
+            startIceCandidatePolling();
         }
-        
     } catch (error) {
         console.error('Ошибка начала звонка:', error);
         alert(`Ошибка начала звонка: ${error.message}`);
-        endCall();
     }
 }
 
@@ -362,6 +377,17 @@ async function endCall() {
         peerConnection = null;
     }
     
+    // Останавливаем все опросы
+    if (callStatusPolling) {
+        clearInterval(callStatusPolling);
+        callStatusPolling = null;
+    }
+    
+    if (iceCandidatePolling) {
+        clearInterval(iceCandidatePolling);
+        iceCandidatePolling = null;
+    }
+    
     currentCall = null;
     remoteStream = null;
     
@@ -510,16 +536,31 @@ async function acceptIncomingCall(call) {
         // Обработка ICE кандидатов
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('Отправляем ICE кандидат');
                 sendIceCandidate(event.candidate);
+            }
+        };
+        
+        // Обработка изменения состояния соединения
+        peerConnection.onconnectionstatechange = () => {
+            console.log('Состояние соединения:', peerConnection.connectionState);
+            if (peerConnection.connectionState === 'connected') {
+                console.log('WebRTC соединение установлено!');
+                updateCallStatus('Соединение установлено');
+            } else if (peerConnection.connectionState === 'failed') {
+                console.error('WebRTC соединение не удалось');
+                updateCallStatus('Ошибка соединения');
             }
         };
         
         // Устанавливаем удаленное описание (offer от звонящего)
         await peerConnection.setRemoteDescription(new RTCSessionDescription(call.offer));
+        console.log('Удаленное описание установлено');
         
         // Создаем answer
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
+        console.log('Локальное описание установлено');
         
         // Отправляем answer на сервер
         const response = await fetch('/call/answer', {
@@ -551,10 +592,14 @@ async function acceptIncomingCall(call) {
             showCallInterface();
             updateCallStatus('Звонок активен');
             startCallTimer();
+            
+            // Начинаем опрос ICE кандидатов от звонящего
+            startIceCandidatePolling();
         }
     } catch (error) {
         console.error('Ошибка принятия звонка:', error);
         hideIncomingCall();
+        alert(`Ошибка принятия звонка: ${error.message}`);
     }
 }
 
@@ -578,6 +623,42 @@ async function rejectIncomingCall(call) {
     } catch (error) {
         console.error('Ошибка отклонения звонка:', error);
         hideIncomingCall();
+    }
+}
+
+// Опрос ICE кандидатов от собеседника
+let iceCandidatePolling = null;
+
+function startIceCandidatePolling() {
+    if (iceCandidatePolling) {
+        clearInterval(iceCandidatePolling);
+    }
+    
+    iceCandidatePolling = setInterval(async () => {
+        if (!currentCall || !peerConnection) return;
+        
+        try {
+            const callStatus = await getCallStatus(currentCall.id);
+            if (callStatus && callStatus.iceCandidates) {
+                for (const iceData of callStatus.iceCandidates) {
+                    // Проверяем, что кандидат от собеседника и еще не обработан
+                    if (iceData.from !== currentUser && !iceData.processed) {
+                        console.log('Получен ICE кандидат от собеседника');
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(iceData.candidate));
+                        iceData.processed = true; // Помечаем как обработанный
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка опроса ICE кандидатов:', error);
+        }
+    }, 1000); // Проверяем каждую секунду
+}
+
+function stopIceCandidatePolling() {
+    if (iceCandidatePolling) {
+        clearInterval(iceCandidatePolling);
+        iceCandidatePolling = null;
     }
 }
 
