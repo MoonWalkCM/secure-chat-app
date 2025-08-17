@@ -3,491 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Звонки - Зашифрованный чат</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-
-        .header h1 {
-            color: #4a5568;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-
-        .nav-menu {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-
-        .nav-menu a {
-            text-decoration: none;
-            color: #4a5568;
-            padding: 10px 20px;
-            border-radius: 25px;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.5);
-        }
-
-        .nav-menu a:hover {
-            background: #667eea;
-            color: white;
-            transform: translateY(-2px);
-        }
-
-        .calls-content {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 20px;
-            height: calc(100vh - 200px);
-        }
-
-        .contacts-section {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
-        }
-
-        .contacts-section h2 {
-            color: #4a5568;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .contact-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px;
-            margin-bottom: 10px;
-            background: rgba(255, 255, 255, 0.7);
-            border-radius: 10px;
-            transition: all 0.3s ease;
-        }
-
-        .contact-item:hover {
-            background: rgba(255, 255, 255, 0.9);
-            transform: translateX(5px);
-        }
-
-        .contact-info {
-            flex: 1;
-        }
-
-        .contact-name {
-            font-weight: 600;
-            color: #2d3748;
-            margin-bottom: 5px;
-        }
-
-        .contact-status {
-            font-size: 12px;
-            padding: 2px 8px;
-            border-radius: 10px;
-            display: inline-block;
-        }
-
-        .contact-status.online {
-            background: #48bb78;
-            color: white;
-        }
-
-        .contact-status.offline {
-            background: #a0aec0;
-            color: white;
-        }
-
-        .contact-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .call-btn {
-            width: 40px;
-            height: 40px;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-
-        .video-call {
-            background: #48bb78;
-            color: white;
-        }
-
-        .video-call:hover {
-            background: #38a169;
-            transform: scale(1.1);
-        }
-
-        .audio-call {
-            background: #4299e1;
-            color: white;
-        }
-
-        .audio-call:hover {
-            background: #3182ce;
-            transform: scale(1.1);
-        }
-
-        .call-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .active-call-section {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Интерфейс звонка */
-        .call-interface {
-            display: none;
-            flex-direction: column;
-            height: 100%;
-            position: relative;
-        }
-
-        .video-container {
-            flex: 1;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-            position: relative;
-        }
-
-        .video-wrapper {
-            position: relative;
-            border-radius: 15px;
-            overflow: hidden;
-            background: #000;
-            aspect-ratio: 16/9;
-        }
-
-        .video-wrapper video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 15px;
-        }
-
-        .video-label {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-        }
-
-        .call-status {
-            text-align: center;
-            font-size: 18px;
-            font-weight: 600;
-            color: #4a5568;
-            margin-bottom: 20px;
-        }
-
-        .call-controls {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            padding: 20px;
-        }
-
-        .control-btn {
-            width: 60px;
-            height: 60px;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-
-        .control-btn.mute {
-            background: #a0aec0;
-            color: white;
-        }
-
-        .control-btn.mute:hover {
-            background: #718096;
-        }
-
-        .control-btn.video {
-            background: #a0aec0;
-            color: white;
-        }
-
-        .control-btn.video:hover {
-            background: #718096;
-        }
-
-        .control-btn.end-call {
-            background: #f56565;
-            color: white;
-        }
-
-        .control-btn.end-call:hover {
-            background: #e53e3e;
-            transform: scale(1.1);
-        }
-
-        .placeholder {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: #718096;
-        }
-
-        .placeholder i {
-            font-size: 4em;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .placeholder h3 {
-            margin-bottom: 10px;
-            color: #4a5568;
-        }
-
-        /* Интерфейс входящего звонка */
-        .incoming-call-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .incoming-call-modal {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            animation: slideIn 0.3s ease;
-            max-width: 400px;
-            width: 90%;
-        }
-
-        .incoming-call-info h3 {
-            color: #4a5568;
-            margin-bottom: 10px;
-            font-size: 24px;
-        }
-
-        .incoming-call-info p {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 18px;
-        }
-
-        .incoming-call-actions {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-        }
-
-        .accept-btn, .reject-btn {
-            padding: 15px 30px;
-            border: none;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .accept-btn {
-            background: #48bb78;
-            color: white;
-        }
-
-        .accept-btn:hover {
-            background: #38a169;
-            transform: scale(1.05);
-        }
-
-        .reject-btn {
-            background: #f56565;
-            color: white;
-        }
-
-        .reject-btn:hover {
-            background: #e53e3e;
-            transform: scale(1.05);
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @keyframes slideIn {
-            from { 
-                opacity: 0;
-                transform: translateY(-50px) scale(0.9);
-            }
-            to { 
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        /* Адаптивность для мобильных устройств */
-        @media (max-width: 768px) {
-            .calls-content {
-                grid-template-columns: 1fr;
-                height: auto;
-            }
-            
-            .video-container {
-                grid-template-columns: 1fr;
-                height: 300px;
-            }
-            
-            .call-controls {
-                flex-wrap: wrap;
-            }
-            
-            .control-btn {
-                width: 50px;
-                height: 50px;
-                font-size: 18px;
-            }
-            
-            .incoming-call-modal {
-                margin: 20px;
-                padding: 20px;
-            }
-            
-            .incoming-call-actions {
-                flex-direction: column;
-            }
-            
-            .accept-btn, .reject-btn {
-                width: 100%;
-                justify-content: center;
-            }
-        }
-    </style>
+    <title>Звонки - Безопасный чат</title>
+    <link rel="stylesheet" href="calls.css">
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1><i class="fas fa-phone"></i> Звонки</h1>
-            <nav class="nav-menu">
-                <a href="/"><i class="fas fa-home"></i> Главная</a>
-                <a href="/chats"><i class="fas fa-comments"></i> Чаты</a>
-                <a href="/calls"><i class="fas fa-phone"></i> Звонки</a>
-                <a href="/profile"><i class="fas fa-user"></i> Профиль</a>
-                <a href="/setting"><i class="fas fa-cog"></i> Настройки</a>
-            </nav>
-        </div>
+        <!-- Навигация -->
+        <nav class="navbar">
+            <div class="nav-brand">📞 Звонки</div>
+            <div class="nav-links">
+                <a href="/main" class="nav-link">🏠 Главная</a>
+                <a href="/chats" class="nav-link">💬 Чаты</a>
+                <a href="/calls" class="nav-link active">📞 Звонки</a>
+                <a href="/profile" class="nav-link">👤 Профиль</a>
+                <a href="/setting" class="nav-link">⚙️ Настройки</a>
+                <button id="logoutBtn" class="nav-link logout-btn">🚪 Выход</button>
+            </div>
+        </nav>
 
-        <div class="calls-content">
-            <div class="contacts-section">
-                <h2><i class="fas fa-users"></i> Контакты</h2>
-                <div id="contacts-list">
-                    <div class="placeholder">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>Загрузка контактов...</p>
-                    </div>
+        <!-- Основной контент -->
+        <div class="main-content">
+            <!-- Список контактов -->
+            <div class="contacts-section" id="contactsSection">
+                <h2>📞 Контакты для звонков</h2>
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="🔍 Поиск контактов...">
+                </div>
+                <div class="contacts-list" id="contactsList">
+                    <!-- Контакты будут загружены динамически -->
                 </div>
             </div>
 
-            <div class="active-call-section">
-                <div class="call-interface" id="call-interface">
-                    <div class="video-container">
-                        <div class="video-wrapper">
-                            <video id="local-video" autoplay muted playsinline></video>
-                            <div class="video-label">Вы</div>
-                        </div>
-                        <div class="video-wrapper">
-                            <video id="remote-video" autoplay playsinline></video>
-                            <div class="video-label">Собеседник</div>
-                        </div>
-                    </div>
-
-                    <div class="call-status" id="call-status">Подготовка к звонку...</div>
-
-                    <div class="call-controls">
-                        <button class="control-btn mute" id="mute-btn" onclick="toggleMute()">
-                            <i class="fas fa-microphone"></i>
-                        </button>
-                        <button class="control-btn video" id="video-btn" onclick="toggleVideo()">
-                            <i class="fas fa-video"></i>
-                        </button>
-                        <button class="control-btn end-call" id="end-call-btn" onclick="endCall()">
-                            <i class="fas fa-phone-slash"></i>
-                        </button>
+            <!-- Интерфейс звонка -->
+            <div class="call-interface" id="callInterface" style="display: none;">
+                <!-- Локальное видео (маленькое) -->
+                <div class="local-video-container">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                    <div class="video-overlay">
+                        <span class="video-label">Вы</span>
                     </div>
                 </div>
 
-                <div class="placeholder" id="no-call-placeholder">
-                    <i class="fas fa-phone"></i>
-                    <h3>Нет активного звонка</h3>
-                    <p>Выберите контакт для начала звонка</p>
+                <!-- Удаленное видео (большое) -->
+                <div class="remote-video-container">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                    <div class="video-overlay">
+                        <span class="video-label" id="remoteVideoLabel">Собеседник</span>
+                    </div>
                 </div>
+
+                <!-- Панель управления звонком -->
+                <div class="call-controls">
+                    <button id="muteBtn" class="control-btn" title="Отключить микрофон">
+                        <span class="btn-icon">🎤</span>
+                    </button>
+                    <button id="videoBtn" class="control-btn" title="Отключить камеру">
+                        <span class="btn-icon">📹</span>
+                    </button>
+                    <button id="fullscreenBtn" class="control-btn" title="Полный экран">
+                        <span class="btn-icon">⛶</span>
+                    </button>
+                    <button id="flipCameraBtn" class="control-btn" title="Перевернуть камеру">
+                        <span class="btn-icon">🔄</span>
+                    </button>
+                    <button id="endCallBtn" class="control-btn end-call" title="Завершить звонок">
+                        <span class="btn-icon">📞</span>
+                    </button>
+                </div>
+
+                <!-- Индикатор состояния -->
+                <div class="call-status" id="callStatus">
+                    <span class="status-text">Подключение...</span>
+                </div>
+            </div>
+
+            <!-- Входящий звонок -->
+            <div class="incoming-call-overlay" id="incomingCallOverlay" style="display: none;">
+                <div class="incoming-call-content">
+                    <div class="caller-info">
+                        <div class="caller-avatar">👤</div>
+                        <div class="caller-details">
+                            <h3 id="incomingCallerName">Звонок</h3>
+                            <p id="incomingCallType">Видеозвонок</p>
+                        </div>
+                    </div>
+                    <div class="incoming-call-buttons">
+                        <button id="acceptCallBtn" class="accept-btn">
+                            <span class="btn-icon">📞</span>
+                            Принять
+                        </button>
+                        <button id="rejectCallBtn" class="reject-btn">
+                            <span class="btn-icon">❌</span>
+                            Отклонить
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Полноэкранный режим -->
+    <div class="fullscreen-overlay" id="fullscreenOverlay" style="display: none;">
+        <div class="fullscreen-content">
+            <!-- Полноэкранное удаленное видео -->
+            <video id="fullscreenRemoteVideo" autoplay playsinline></video>
+            
+            <!-- Мини-панель управления -->
+            <div class="fullscreen-controls">
+                <button id="fsMuteBtn" class="control-btn" title="Отключить микрофон">
+                    <span class="btn-icon">🎤</span>
+                </button>
+                <button id="fsVideoBtn" class="control-btn" title="Отключить камеру">
+                    <span class="btn-icon">📹</span>
+                </button>
+                <button id="fsFlipCameraBtn" class="control-btn" title="Перевернуть камеру">
+                    <span class="btn-icon">🔄</span>
+                </button>
+                <button id="fsEndCallBtn" class="control-btn end-call" title="Завершить звонок">
+                    <span class="btn-icon">📞</span>
+                </button>
+                <button id="exitFullscreenBtn" class="control-btn" title="Выйти из полноэкранного режима">
+                    <span class="btn-icon">⛶</span>
+                </button>
+            </div>
+
+            <!-- Мини-локальное видео (в правом нижнем углу) -->
+            <div class="fullscreen-local-video">
+                <video id="fullscreenLocalVideo" autoplay muted playsinline></video>
             </div>
         </div>
     </div>
