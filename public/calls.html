@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Звонки - Безопасный чат</title>
     <link rel="stylesheet" href="calls.css">
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -17,7 +16,7 @@
                 <a href="/chats" class="nav-link">💬 Чаты</a>
                 <a href="/calls" class="nav-link active">📞 Звонки</a>
                 <a href="/profile" class="nav-link">👤 Профиль</a>
-                <a href="/setting" class="nav-link">⚙️ Настройки</a>
+                <a href href="/setting" class="nav-link">⚙️ Настройки</a>
                 <button id="logoutBtn" class="nav-link logout-btn">🚪 Выход</button>
             </div>
         </nav>
@@ -32,6 +31,11 @@
                 </div>
                 <div class="contacts-list" id="contactsList">
                     <!-- Контакты будут загружены динамически -->
+                </div>
+                <div class="debug-controls">
+                    <button id="clearCallsBtn" class="debug-btn" title="Очистить все звонки">
+                        🗑️ Очистить звонки
+                    </button>
                 </div>
             </div>
 
