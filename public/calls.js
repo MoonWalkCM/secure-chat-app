@@ -142,12 +142,18 @@ async function startCall(recipient, withVideo) {
         
         // Обработка удаленного потока
         peerConnection.ontrack = (event) => {
-            console.log('Получен удаленный поток');
-            remoteStream = event.streams[0];
-            const remoteVideo = document.getElementById('remote-video');
-            if (remoteVideo) {
-                remoteVideo.srcObject = remoteStream;
-                remoteVideo.play().catch(e => console.error('Ошибка воспроизведения видео:', e));
+            console.log('Получен удаленный поток:', event.streams);
+            if (event.streams && event.streams.length > 0) {
+                remoteStream = event.streams[0];
+                const remoteVideo = document.getElementById('remote-video');
+                if (remoteVideo) {
+                    console.log('Устанавливаем удаленное видео');
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.onloadedmetadata = () => {
+                        console.log('Метаданные удаленного видео загружены');
+                        remoteVideo.play().catch(e => console.error('Ошибка воспроизведения видео:', e));
+                    };
+                }
             }
         };
         
@@ -168,6 +174,18 @@ async function startCall(recipient, withVideo) {
             } else if (peerConnection.connectionState === 'failed') {
                 console.error('WebRTC соединение не удалось');
                 updateCallStatus('Ошибка соединения');
+            }
+        };
+        
+        // Обработка состояния ICE соединения
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('Состояние ICE соединения:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'connected') {
+                console.log('ICE соединение установлено!');
+                updateCallStatus('Соединение установлено');
+            } else if (peerConnection.iceConnectionState === 'failed') {
+                console.error('ICE соединение не удалось');
+                updateCallStatus('Ошибка ICE соединения');
             }
         };
         
@@ -349,9 +367,12 @@ async function rejectCall() {
 
 // Завершение звонка
 async function endCall() {
+    console.log('Завершаем звонок');
+    
     if (currentCall) {
         try {
-            await fetch('/call/end', {
+            console.log('Отправляем запрос на завершение звонка:', currentCall.id);
+            const response = await fetch('/call/end', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -361,6 +382,12 @@ async function endCall() {
                     callId: currentCall.id
                 })
             });
+            
+            if (response.ok) {
+                console.log('Звонок успешно завершен на сервере');
+            } else {
+                console.error('Ошибка завершения звонка на сервере');
+            }
         } catch (error) {
             console.error('Ошибка завершения звонка:', error);
         }
@@ -430,7 +457,11 @@ function startCallStatusPolling() {
             if (currentCall) {
                 const callStatus = await getCallStatus(currentCall.id);
                 if (callStatus) {
+                    console.log('Получен статус звонка:', callStatus.status);
                     handleCallStatusUpdate(callStatus);
+                } else {
+                    console.log('Звонок не найден на сервере, завершаем');
+                    endCall();
                 }
             }
         } catch (error) {
@@ -524,12 +555,18 @@ async function acceptIncomingCall(call) {
         
         // Обработка удаленного потока
         peerConnection.ontrack = (event) => {
-            console.log('Получен удаленный поток');
-            remoteStream = event.streams[0];
-            const remoteVideo = document.getElementById('remote-video');
-            if (remoteVideo) {
-                remoteVideo.srcObject = remoteStream;
-                remoteVideo.play().catch(e => console.error('Ошибка воспроизведения видео:', e));
+            console.log('Получен удаленный поток:', event.streams);
+            if (event.streams && event.streams.length > 0) {
+                remoteStream = event.streams[0];
+                const remoteVideo = document.getElementById('remote-video');
+                if (remoteVideo) {
+                    console.log('Устанавливаем удаленное видео');
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.onloadedmetadata = () => {
+                        console.log('Метаданные удаленного видео загружены');
+                        remoteVideo.play().catch(e => console.error('Ошибка воспроизведения видео:', e));
+                    };
+                }
             }
         };
         
@@ -550,6 +587,18 @@ async function acceptIncomingCall(call) {
             } else if (peerConnection.connectionState === 'failed') {
                 console.error('WebRTC соединение не удалось');
                 updateCallStatus('Ошибка соединения');
+            }
+        };
+        
+        // Обработка состояния ICE соединения
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('Состояние ICE соединения:', peerConnection.iceConnectionState);
+            if (peerConnection.iceConnectionState === 'connected') {
+                console.log('ICE соединение установлено!');
+                updateCallStatus('Соединение установлено');
+            } else if (peerConnection.iceConnectionState === 'failed') {
+                console.error('ICE соединение не удалось');
+                updateCallStatus('Ошибка ICE соединения');
             }
         };
         
@@ -643,9 +692,14 @@ function startIceCandidatePolling() {
                 for (const iceData of callStatus.iceCandidates) {
                     // Проверяем, что кандидат от собеседника и еще не обработан
                     if (iceData.from !== currentUser && !iceData.processed) {
-                        console.log('Получен ICE кандидат от собеседника');
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(iceData.candidate));
-                        iceData.processed = true; // Помечаем как обработанный
+                        console.log('Получен ICE кандидат от собеседника:', iceData.candidate);
+                        try {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(iceData.candidate));
+                            console.log('ICE кандидат успешно добавлен');
+                            iceData.processed = true; // Помечаем как обработанный
+                        } catch (error) {
+                            console.error('Ошибка добавления ICE кандидата:', error);
+                        }
                     }
                 }
             }
@@ -717,22 +771,29 @@ function stopRingtone() {
 
 // Обработка обновления статуса звонка
 function handleCallStatusUpdate(callStatus) {
+    console.log('Обновление статуса звонка:', callStatus.status);
+    
     if (callStatus.status === 'rejected') {
         alert('Звонок отклонен');
         endCall();
     } else if (callStatus.status === 'ended') {
         alert('Звонок завершен');
         endCall();
-    } else if (callStatus.status === 'active' && currentCall.status === 'pending') {
+    } else if (callStatus.status === 'active') {
         // Звонок принят, устанавливаем соединение
-        handleCallAccepted(callStatus);
+        if (currentCall && currentCall.status === 'pending') {
+            handleCallAccepted(callStatus);
+        }
     }
 }
 
 // Обработка принятого звонка
 async function handleCallAccepted(callStatus) {
     try {
+        console.log('Обрабатываем принятие звонка');
+        
         if (callStatus.answer) {
+            console.log('Устанавливаем удаленное описание (answer)');
             await peerConnection.setRemoteDescription(new RTCSessionDescription(callStatus.answer));
             currentCall.status = 'active';
             updateCallStatus('Звонок активен');
@@ -740,6 +801,7 @@ async function handleCallAccepted(callStatus) {
         }
     } catch (error) {
         console.error('Ошибка установки соединения:', error);
+        alert(`Ошибка установки соединения: ${error.message}`);
     }
 }
 
