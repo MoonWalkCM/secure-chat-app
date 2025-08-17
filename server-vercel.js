@@ -575,8 +575,15 @@ app.post('/call/offer', async (req, res) => {
         // Проверяем, что offer имеет правильную структуру
         if (!offer || !offer.type || !offer.sdp) {
             console.error('❌ Неверный формат offer от клиента:', offer);
+            console.error('📋 Тип offer:', typeof offer);
+            console.error('📋 Содержимое offer:', JSON.stringify(offer, null, 2));
             return res.status(400).json({ error: 'Неверный формат offer' });
         }
+        
+        console.log('✅ Offer валиден:', {
+            type: offer.type,
+            sdpLength: offer.sdp ? offer.sdp.length : 0
+        });
         
         const callSession = {
             id: callId,
@@ -589,6 +596,12 @@ app.post('/call/offer', async (req, res) => {
             timestamp: Date.now(),
             iceCandidates: []
         };
+        
+        console.log('📋 CallSession для сохранения:', {
+            id: callSession.id,
+            offerType: typeof callSession.offer,
+            offerLength: callSession.offer.length
+        });
         
         // Пытаемся сохранить в MongoDB, если не получается - используем in-memory
         const callsCollection = await getCallsCollection();
@@ -671,6 +684,15 @@ app.post('/call/answer', async (req, res) => {
         if (callsCollection) {
             try {
                 callSession = await callsCollection.findOne({ id: callId });
+                if (callSession) {
+                    console.log('📞 Звонок найден в MongoDB:', callId);
+                    console.log('📋 Данные звонка из MongoDB:', {
+                        id: callSession.id,
+                        status: callSession.status,
+                        offerType: typeof callSession.offer,
+                        offerLength: callSession.offer ? callSession.offer.length : 0
+                    });
+                }
             } catch (mongoError) {
                 console.error('❌ Ошибка MongoDB при поиске звонка для ответа:', mongoError.message);
             }
@@ -935,13 +957,20 @@ app.get('/call/status/:callId', async (req, res) => {
                         const parsed = JSON.parse(callSession.offer);
                         // Дополнительная проверка структуры
                         if (parsed && parsed.type && parsed.sdp) {
+                            console.log('✅ Offer успешно распарсен для API:', parsed.type);
                             return parsed;
                         } else {
-                            console.error('❌ Неверная структура offer после парсинга:', parsed);
+                            console.error('❌ Неверная структура offer после парсинга:', {
+                                hasParsed: !!parsed,
+                                hasType: !!(parsed && parsed.type),
+                                hasSdp: !!(parsed && parsed.sdp),
+                                parsed: parsed
+                            });
                             return null;
                         }
                     } catch (e) {
                         console.error('❌ Ошибка парсинга offer:', e);
+                        console.error('📋 Сырые данные offer:', callSession.offer);
                         return null;
                     }
                 })() : null,
