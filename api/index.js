@@ -1,4 +1,4 @@
-const app = require('../server-vercel');
+const app = require('../server-sqlite');
 
 // Экспортируем для Vercel
 module.exports = app; 
