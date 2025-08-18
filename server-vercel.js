@@ -573,6 +573,15 @@ app.post('/call/offer', async (req, res) => {
         const callId = Date.now().toString();
         
         // Проверяем, что offer имеет правильную структуру
+        console.log('📋 Получен offer от клиента:', {
+            offerType: typeof offer,
+            offerKeys: offer ? Object.keys(offer) : 'null',
+            hasType: offer && offer.type,
+            hasSdp: offer && offer.sdp,
+            typeValue: offer && offer.type,
+            sdpLength: offer && offer.sdp ? offer.sdp.length : 0
+        });
+        
         if (!offer || !offer.type || !offer.sdp) {
             console.error('❌ Неверный формат offer от клиента:', offer);
             console.error('📋 Тип offer:', typeof offer);
@@ -776,28 +785,69 @@ app.post('/call/reject', async (req, res) => {
         }
         
         const { callId } = req.body;
+        console.log('📞 Запрос на отклонение звонка:', callId, 'от пользователя:', rejecter.login);
         
-        let callSession = inMemoryCalls.get(callId);
+        let callSession = null;
+        
+        // Сначала пытаемся найти в MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                callSession = await callsCollection.findOne({ id: callId });
+                if (callSession) {
+                    console.log('📞 Звонок найден в MongoDB для отклонения:', callId);
+                }
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при поиске звонка для отклонения:', mongoError.message);
+            }
+        }
+        
+        // Если не найден в MongoDB, ищем в памяти
+        if (!callSession) {
+            callSession = inMemoryCalls.get(callId);
+            if (callSession) {
+                console.log('📞 Звонок найден в памяти для отклонения:', callId);
+            }
+        }
         
         if (!callSession) {
+            console.log('❌ Звонок не найден для отклонения:', callId);
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
         if (callSession.recipient !== rejecter.login) {
+            console.log('🚫 Пользователь не авторизован для отклонения звонка:', rejecter.login);
             return res.status(403).json({ error: 'Не авторизован для отклонения этого звонка' });
         }
         
-        // Обновляем статус
-        callSession.status = 'rejected';
-        inMemoryCalls.set(callId, callSession);
-        console.log('Звонок отклонен в памяти:', callId, 'пользователем:', rejecter.login);
+        // Обновляем статус в MongoDB
+        if (callsCollection) {
+            try {
+                await callsCollection.updateOne(
+                    { id: callId },
+                    { $set: { status: 'rejected' } }
+                );
+                console.log('✅ Звонок отклонен в MongoDB:', callId, 'пользователем:', rejecter.login);
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при отклонении звонка:', mongoError.message);
+                // Обновляем в памяти как fallback
+                callSession.status = 'rejected';
+                inMemoryCalls.set(callId, callSession);
+                console.log('✅ Звонок отклонен в памяти:', callId, 'пользователем:', rejecter.login);
+            }
+        } else {
+            // Обновляем в памяти
+            callSession.status = 'rejected';
+            inMemoryCalls.set(callId, callSession);
+            console.log('✅ Звонок отклонен в памяти:', callId, 'пользователем:', rejecter.login);
+        }
         
         res.json({ 
             success: true, 
             message: 'Звонок отклонен'
         });
     } catch (error) {
-        console.error('Ошибка отклонения звонка:', error);
+        console.error('❌ Ошибка отклонения звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -817,29 +867,69 @@ app.post('/call/end', async (req, res) => {
         }
         
         const { callId } = req.body;
+        console.log('📞 Запрос на завершение звонка:', callId, 'от пользователя:', ender.login);
         
-        let callSession = inMemoryCalls.get(callId);
+        let callSession = null;
+        
+        // Сначала пытаемся найти в MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                callSession = await callsCollection.findOne({ id: callId });
+                if (callSession) {
+                    console.log('📞 Звонок найден в MongoDB для завершения:', callId);
+                }
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при поиске звонка для завершения:', mongoError.message);
+            }
+        }
+        
+        // Если не найден в MongoDB, ищем в памяти
+        if (!callSession) {
+            callSession = inMemoryCalls.get(callId);
+            if (callSession) {
+                console.log('📞 Звонок найден в памяти для завершения:', callId);
+            }
+        }
         
         if (!callSession) {
-            console.log('Звонок не найден для завершения:', callId);
+            console.log('❌ Звонок не найден для завершения:', callId);
             return res.status(404).json({ error: 'Звонок не найден' });
         }
         
         if (!callSession.participants.includes(ender.login)) {
+            console.log('🚫 Пользователь не авторизован для завершения звонка:', ender.login);
             return res.status(403).json({ error: 'Не авторизован для завершения этого звонка' });
         }
         
-        // Обновляем статус
-        callSession.status = 'ended';
-        inMemoryCalls.set(callId, callSession);
-        console.log('Звонок завершен в памяти:', callId, 'пользователем:', ender.login);
+        // Обновляем статус в MongoDB
+        if (callsCollection) {
+            try {
+                await callsCollection.updateOne(
+                    { id: callId },
+                    { $set: { status: 'ended' } }
+                );
+                console.log('✅ Звонок завершен в MongoDB:', callId, 'пользователем:', ender.login);
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при завершении звонка:', mongoError.message);
+                // Обновляем в памяти как fallback
+                callSession.status = 'ended';
+                inMemoryCalls.set(callId, callSession);
+                console.log('✅ Звонок завершен в памяти:', callId, 'пользователем:', ender.login);
+            }
+        } else {
+            // Обновляем в памяти
+            callSession.status = 'ended';
+            inMemoryCalls.set(callId, callSession);
+            console.log('✅ Звонок завершен в памяти:', callId, 'пользователем:', ender.login);
+        }
         
         res.json({ 
             success: true, 
             message: 'Звонок завершен'
         });
     } catch (error) {
-        console.error('Ошибка завершения звонка:', error);
+        console.error('❌ Ошибка завершения звонка:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -891,6 +981,77 @@ app.post('/call/ice-candidate', async (req, res) => {
         });
     } catch (error) {
         console.error('Ошибка обработки ICE кандидата:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Получение входящих звонков
+app.get('/call/incoming', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+            return res.status(401).json({ error: 'Токен не предоставлен' });
+        }
+        
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = users.get(decoded.login);
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        console.log('🔍 Запрос входящих звонков от пользователя:', user.login);
+        
+        let incomingCalls = [];
+        
+        // Сначала пытаемся найти в MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                const now = Date.now();
+                const mongoCalls = await callsCollection.find({
+                    recipient: user.login,
+                    status: 'pending',
+                    timestamp: { $gt: now - 300000 } // Звонки за последние 5 минут
+                }).toArray();
+                
+                incomingCalls = mongoCalls.map(call => ({
+                    id: call.id,
+                    caller: call.caller,
+                    offer: call.offer,
+                    withVideo: call.withVideo,
+                    timestamp: call.timestamp
+                }));
+                
+                console.log('📞 Найдено входящих звонков в MongoDB:', incomingCalls.length);
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при поиске входящих звонков:', mongoError.message);
+            }
+        }
+        
+        // Также проверяем в памяти
+        for (const [callId, callSession] of inMemoryCalls.entries()) {
+            if (callSession.recipient === user.login && 
+                callSession.status === 'pending' && 
+                callSession.timestamp > Date.now() - 300000) {
+                
+                // Проверяем, не дублируется ли уже в списке
+                if (!incomingCalls.find(call => call.id === callId)) {
+                    incomingCalls.push({
+                        id: callSession.id,
+                        caller: callSession.caller,
+                        offer: callSession.offer,
+                        withVideo: callSession.withVideo,
+                        timestamp: callSession.timestamp
+                    });
+                }
+            }
+        }
+        
+        console.log('📞 Всего входящих звонков:', incomingCalls.length);
+        
+        res.json(incomingCalls);
+    } catch (error) {
+        console.error('❌ Ошибка получения входящих звонков:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
