@@ -13,6 +13,7 @@ let incomingCallPolling = null;
 let pingInterval = null;
 let incomingCallShown = false;
 let processedCallIds = new Set();
+let pendingIceCandidates = [];
 
 // Элементы DOM
 const contactsList = document.getElementById('contactsList');
@@ -276,6 +277,8 @@ async function startVideoCall(recipient) {
             answerReceived: false,
             status: 'pending'
         };
+        // После получения callId — отправляем отложенные кандидаты
+        flushPendingIceCandidates();
         
         console.log('✅ Видеозвонок инициирован:', data.callId);
         
@@ -337,10 +340,12 @@ async function startAudioCall(recipient) {
         
         const data = await response.json();
         currentCall = {
-            id: data.callId,
+            callId: data.callId,
             recipient: recipient,
-            type: 'audio'
+            type: 'audio',
+            status: 'pending'
         };
+        flushPendingIceCandidates();
         
         // Показываем интерфейс звонка
         showCallInterface();
@@ -405,7 +410,7 @@ function createPeerConnection() {
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
             console.log('🧊 Отправляем ICE кандидат:', event.candidate.type);
-            sendIceCandidate(event.candidate);
+            enqueueIceCandidate(event.candidate);
         }
     };
     
@@ -474,6 +479,30 @@ async function sendIceCandidate(candidate) {
     };
     
     await sendWithRetry();
+}
+
+// Кладем кандидата в буфер, если callId еще нет, иначе отправляем сразу
+function enqueueIceCandidate(candidate) {
+    if (!currentCall || !currentCall.callId) {
+        pendingIceCandidates.push(candidate);
+        return;
+    }
+    sendIceCandidate(candidate);
+}
+
+// Отправляем все отложенные ICE кандидаты, когда появился callId
+async function flushPendingIceCandidates() {
+    if (!currentCall || !currentCall.callId) return;
+    if (!pendingIceCandidates.length) return;
+    const toSend = pendingIceCandidates.slice();
+    pendingIceCandidates = [];
+    for (const candidate of toSend) {
+        try {
+            await sendIceCandidate(candidate);
+        } catch (e) {
+            console.error('❌ Ошибка отправки отложенного ICE кандидата:', e);
+        }
+    }
 }
 
 // Показ интерфейса звонка
@@ -679,6 +708,8 @@ async function endCall() {
             peerConnection.close();
             peerConnection = null;
         }
+        // Сбрасываем буфер ICE кандидатов
+        pendingIceCandidates = [];
         
         if (currentCall && currentCall.stream) {
             currentCall.stream.getTracks().forEach(track => track.stop());
@@ -1044,6 +1075,16 @@ async function acceptIncomingCall(callSession) {
         
         // Создаем WebRTC соединение
         createPeerConnection();
+
+        // Устанавливаем текущий звонок заранее, чтобы был callId для ICE
+        currentCall = {
+            callId: callSession.id,
+            recipient: callSession.caller,
+            isIncoming: true,
+            stream: null,
+            answerReceived: true,
+            status: 'active'
+        };
         
         // Получаем медиапоток
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -1088,15 +1129,10 @@ async function acceptIncomingCall(callSession) {
             throw new Error(`HTTP ${response.status}`);
         }
         
-        // Устанавливаем текущий звонок
-        currentCall = {
-            callId: callSession.id,
-            recipient: callSession.caller,
-            isIncoming: true,
-            stream: stream,
-            answerReceived: true,
-            status: 'active'
-        };
+        // Дополняем текущий звонок потоком
+        currentCall.stream = stream;
+        // После установки callId — отправляем отложенные кандидаты
+        flushPendingIceCandidates();
         
         console.log('✅ Входящий звонок принят');
         
