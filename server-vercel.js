@@ -754,14 +754,24 @@ app.post('/call/answer', async (req, res) => {
                         { upsert: true }
                     );
                     console.log('📦 Answer забуферизован для звонка (пока не найден основной документ):', callId);
-                    return res.json({ success: true, message: 'Звонок принят (буфер)' });
                 } catch (e) {
                     console.error('❌ Ошибка буферизации answer:', e.message);
-                    return res.json({ success: true, message: 'Звонок принят (fallback, буфер недоступен)' });
                 }
             }
-            console.log('ℹ️ Хранилище ответов недоступно. Возвращаем успех для устойчивости:', callId);
-            return res.json({ success: true, message: 'Звонок принят (fallback)' });
+            // Также сохраняем минимальную сессию в памяти, чтобы статус мог отдать answer сразу
+            inMemoryCalls.set(callId, {
+                id: callId,
+                caller: null,
+                recipient: answerer.login,
+                status: 'active',
+                participants: [answerer.login],
+                offer: null,
+                answer: JSON.stringify(answer),
+                timestamp: Date.now(),
+                iceCandidates: []
+            });
+            console.log('✅ Временная сессия звонка создана в памяти с answer:', callId);
+            return res.json({ success: true, message: 'Звонок принят (in-memory)' });
         }
         
         // Если recipient не совпадает (рассинхронизация), но пользователь участник — разрешаем принять
