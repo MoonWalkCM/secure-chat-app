@@ -134,6 +134,20 @@ async function getIceCollection() {
     }
 }
 
+// Коллекция буфера ANSWER
+async function getAnswersCollection() {
+    try {
+        const database = await connectToMongoDB();
+        if (database) {
+            return database.collection('call_answers');
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Ошибка получения коллекции ANSWERS:', error.message);
+        return null;
+    }
+}
+
 // Создание тестовых пользователей
 async function createTestUsers() {
     console.log('Создаем тестовых пользователей...');
@@ -730,6 +744,21 @@ app.post('/call/answer', async (req, res) => {
         }
         
         if (!callSession) {
+            // Буферизуем answer, чтобы другой инстанс смог его подобрать
+            const answersCollection = await getAnswersCollection();
+            if (answersCollection) {
+                try {
+                    await answersCollection.updateOne(
+                        { id: callId },
+                        { $set: { id: callId, answer: JSON.stringify(answer), timestamp: Date.now() } },
+                        { upsert: true }
+                    );
+                    console.log('📦 Answer забуферизован для звонка (пока не найден основной документ):', callId);
+                    return res.json({ success: true, message: 'Звонок принят (буфер)' });
+                } catch (e) {
+                    console.error('❌ Ошибка буферизации answer:', e.message);
+                }
+            }
             console.log('❌ Звонок не найден для принятия:', callId);
             return res.status(404).json({ error: 'Звонок не найден' });
         }
@@ -758,6 +787,11 @@ app.post('/call/answer', async (req, res) => {
                     }
                 );
                 console.log('✅ Звонок принят в MongoDB:', callId, 'пользователем:', answerer.login);
+                // Удаляем буфер, если был
+                try {
+                    const answersCollection = await getAnswersCollection();
+                    if (answersCollection) await answersCollection.deleteOne({ id: callId });
+                } catch {}
             } catch (mongoError) {
                 console.error('❌ Ошибка MongoDB при обновлении звонка:', mongoError.message);
                 // Обновляем в памяти как fallback
@@ -1213,7 +1247,23 @@ app.get('/call/status/:callId', async (req, res) => {
                         console.error('❌ Ошибка парсинга answer:', e);
                         return null;
                     }
-                })() : null,
+                })() : (() => {
+                    // Если основного answer нет, пробуем из буфера
+                    return (async () => {
+                        try {
+                            const answersCollection = await getAnswersCollection();
+                            if (!answersCollection) return null;
+                            const doc = await answersCollection.findOne({ id: callId });
+                            if (doc && doc.answer) {
+                                const parsed = JSON.parse(doc.answer);
+                                return (parsed && parsed.type && parsed.sdp) ? parsed : null;
+                            }
+                        } catch (e) {
+                            console.error('❌ Ошибка чтения буферизованного answer:', e.message);
+                        }
+                        return null;
+                    })();
+                })(),
                 iceCandidates: [
                     ...((callSession.iceCandidates) ? callSession.iceCandidates : []),
                     ...bufferedIce.map(item => ({ from: item.from, candidate: item.candidate, timestamp: item.timestamp, processed: false }))
