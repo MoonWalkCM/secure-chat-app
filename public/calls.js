@@ -98,9 +98,22 @@ function setupEventListeners() {
     flipCameraBtn?.addEventListener('click', flipCamera);
     endCallBtn?.addEventListener('click', endCall);
     
-    // Входящий звонок
-    acceptCallBtn?.addEventListener('click', acceptIncomingCall);
-    rejectCallBtn?.addEventListener('click', rejectIncomingCall);
+    // Входящий звонок — используем currentCall при клике
+    acceptCallBtn?.addEventListener('click', () => {
+        if (currentCall) {
+            acceptIncomingCall(currentCall);
+        } else {
+            console.error('❌ Нет данных входящего звонка при попытке принять');
+        }
+    });
+    rejectCallBtn?.addEventListener('click', () => {
+        const callId = currentCall?.id || currentCall?.callId;
+        if (callId) {
+            rejectIncomingCall(callId);
+        } else {
+            console.error('❌ Нет ID входящего звонка при попытке отклонить');
+        }
+    });
     
     // Полноэкранный режим
     fsMuteBtn?.addEventListener('click', toggleMute);
