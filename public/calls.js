@@ -818,11 +818,15 @@ function startCallStatusPolling() {
         } else if (callSession.status === 'active' && callSession.answer) {
             // Обрабатываем ответ на звонок
             if (!currentCall.answerReceived) {
-                console.log('📞 Получен ответ на звонок, обрабатываем...');
+                console.log('📞 Соединяю...');
                 currentCall.answerReceived = true;
                 currentCall.status = 'active';
                 await handleCallAnswer(callSession.answer);
+                updateCallStatus('Разговор идет');
             }
+        } else if (callSession.status === 'active' && !callSession.answer) {
+            // На Vercel ответ может прийти позже — показываем промежуточный статус
+            updateCallStatus('Соединяю...');
         }
         
         // Логируем состояние offer и answer для отладки
@@ -865,6 +869,9 @@ function startCallStatusPolling() {
             for (const iceCandidate of callSession.iceCandidates) {
                 if (!iceCandidate.processed && iceCandidate.from !== currentUser.login) {
                     try {
+                        if (!peerConnection.remoteDescription) {
+                            console.log('⏳ Ждем remoteDescription для добавления ICE кандидатов');
+                        }
                         await peerConnection.addIceCandidate(iceCandidate.candidate);
                         iceCandidate.processed = true;
                         console.log('✅ ICE кандидат добавлен от:', iceCandidate.from);
@@ -886,7 +893,7 @@ function stopCallStatusPolling() {
 }
 
 // Обработка обновления статуса звонка
-function handleCallStatusUpdate(callSession) {
+async function handleCallStatusUpdate(callSession) {
     if (!callSession) return;
     
     switch (callSession.status) {
@@ -903,8 +910,15 @@ function handleCallStatusUpdate(callSession) {
     }
     
     // Обрабатываем answer если есть
-    if (callSession.answer && peerConnection && peerConnection.signalingState !== 'stable') {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(callSession.answer));
+    if (callSession.answer && peerConnection) {
+        try {
+            if (!peerConnection.remoteDescription || peerConnection.signalingState !== 'stable') {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(callSession.answer));
+                updateCallStatus('Разговор идет');
+            }
+        } catch (e) {
+            console.error('❌ Ошибка установки удаленного описания из статуса:', e);
+        }
     }
     
     // Обрабатываем ICE кандидаты
