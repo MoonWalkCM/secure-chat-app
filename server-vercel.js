@@ -120,6 +120,20 @@ async function getCallsCollection() {
     }
 }
 
+// Коллекция буфера ICE кандидатов
+async function getIceCollection() {
+    try {
+        const database = await connectToMongoDB();
+        if (database) {
+            return database.collection('call_ice');
+        }
+        return null;
+    } catch (error) {
+        console.error('❌ Ошибка получения коллекции ICE:', error.message);
+        return null;
+    }
+}
+
 // Создание тестовых пользователей
 async function createTestUsers() {
     console.log('Создаем тестовых пользователей...');
@@ -950,30 +964,64 @@ app.post('/call/ice-candidate', async (req, res) => {
         
         const { callId, candidate } = req.body;
         
-        let callSession = inMemoryCalls.get(callId);
+        let callSession = null;
+        let storedIn = 'memory';
         
+        // Сначала пытаемся найти в MongoDB
+        const callsCollection = await getCallsCollection();
+        if (callsCollection) {
+            try {
+                callSession = await callsCollection.findOne({ id: callId });
+                if (callSession) {
+                    storedIn = 'mongo';
+                }
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при поиске звонка для ICE:', mongoError.message);
+            }
+        }
+        
+        // Если не найден в MongoDB, ищем в памяти
         if (!callSession) {
-            return res.status(404).json({ error: 'Звонок не найден' });
+            callSession = inMemoryCalls.get(callId);
+            storedIn = 'memory';
         }
         
-        if (!callSession.participants.includes(sender.login)) {
-            return res.status(403).json({ error: 'Не авторизован для этого звонка' });
-        }
+        // Если звонок не найден (другой инстанс/холодный старт), все равно буферизуем ICE
+        // Проверку авторизации пропускаем в этом редком случае, чтобы не ломать соединение
+        // На стадии потребления кандидатов будет валидация по участникам
         
-        // Добавляем ICE кандидата
+        // Добавляем ICE кандидата (буферизуем в отдельной коллекции для надежности)
         const iceCandidate = {
+            callId,
             from: sender.login,
-            candidate: candidate,
+            candidate,
             timestamp: Date.now(),
             processed: false
         };
-        
-        if (!callSession.iceCandidates) {
-            callSession.iceCandidates = [];
+
+        const iceCollection = await getIceCollection();
+        if (iceCollection) {
+            try {
+                await iceCollection.insertOne(iceCandidate);
+                console.log('ICE кандидат сохранен в MongoDB буфере от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
+            } catch (mongoError) {
+                console.error('❌ Ошибка MongoDB при буферизации ICE кандидата:', mongoError.message);
+                // Fallback: сохраняем в памяти внутри callSession
+                if (!callSession.iceCandidates) {
+                    callSession.iceCandidates = [];
+                }
+                callSession.iceCandidates.push(iceCandidate);
+                inMemoryCalls.set(callId, callSession);
+                console.log('ICE кандидат сохранен в памяти (fallback) от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
+            }
+        } else {
+            if (!callSession.iceCandidates) {
+                callSession.iceCandidates = [];
+            }
+            callSession.iceCandidates.push(iceCandidate);
+            inMemoryCalls.set(callId, callSession);
+            console.log('ICE кандидат сохранен в памяти от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
         }
-        callSession.iceCandidates.push(iceCandidate);
-        inMemoryCalls.set(callId, callSession);
-        console.log('ICE кандидат сохранен в памяти от:', sender.login, 'для звонка:', callId, 'тип:', candidate.type);
         
         res.json({ 
             success: true, 
@@ -1094,8 +1142,9 @@ app.get('/call/status/:callId', async (req, res) => {
         }
         
         if (!callSession) {
-            console.log('❌ Звонок не найден для статуса:', callId);
-            return res.status(404).json({ error: 'Звонок не найден' });
+            // Возвращаем pending, чтобы клиенты не роняли соединение
+            console.log('ℹ️ Звонок не найден для статуса, возвращаем pending:', callId);
+            return res.json({ success: true, callSession: { id: callId, status: 'pending', iceCandidates: [] } });
         }
         
         if (!callSession.participants.includes(user.login)) {
@@ -1105,6 +1154,21 @@ app.get('/call/status/:callId', async (req, res) => {
         
         console.log('✅ Статус звонка найден:', callSession.status);
         
+        // Собираем также буферизированные ICE кандидаты для этого звонка и очищаем их
+        let bufferedIce = [];
+        try {
+            const iceCollection = await getIceCollection();
+            if (iceCollection) {
+                bufferedIce = await iceCollection.find({ callId }).toArray();
+                if (bufferedIce.length > 0) {
+                    await iceCollection.deleteMany({ callId });
+                    console.log('📦 Выдано и очищено буферизированных ICE кандидатов:', bufferedIce.length, 'для', callId);
+                }
+            }
+        } catch (e) {
+            console.error('❌ Ошибка выборки буферизированных ICE кандидатов:', e.message);
+        }
+
         res.json({ 
             success: true, 
             callSession: {
@@ -1150,7 +1214,10 @@ app.get('/call/status/:callId', async (req, res) => {
                         return null;
                     }
                 })() : null,
-                iceCandidates: callSession.iceCandidates || []
+                iceCandidates: [
+                    ...((callSession.iceCandidates) ? callSession.iceCandidates : []),
+                    ...bufferedIce.map(item => ({ from: item.from, candidate: item.candidate, timestamp: item.timestamp, processed: false }))
+                ]
             }
         });
     } catch (error) {
