@@ -423,8 +423,12 @@ function createPeerConnection() {
     // Обработчик ICE кандидатов
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            console.log('🧊 Отправляем ICE кандидат:', event.candidate.type);
-            enqueueIceCandidate(event.candidate);
+            try {
+                console.log('🧊 Отправляем ICE кандидат:', event.candidate.candidate ? 'candidate' : 'end');
+                enqueueIceCandidate(event.candidate);
+            } catch (e) {
+                console.warn('⚠️ Ошибка постановки ICE кандидата в очередь:', e);
+            }
         }
     };
     
@@ -470,9 +474,9 @@ async function sendIceCandidate(candidate) {
             });
             
             if (response.status === 404) {
-                console.log('ℹ️ Звонок не найден на сервере для ICE кандидата, сбрасываем');
-                endCall();
-                return;
+                // На Vercel другой инстанс может еще не создать запись. Не роняем звонок.
+                console.log('ℹ️ Звонок не найден на сервере для ICE кандидата (404). Подождем и попробуем позже.');
+                throw new Error('Call not found');
             }
             
             if (!response.ok) {
@@ -1045,10 +1049,10 @@ async function acceptIncomingCall(callSession) {
             offerRaw: callSession.offer
         });
         
-        // Если callSession не содержит нужные данные, используем currentCall
-        if (!callSession.id && currentCall) {
-            console.log('⚠️ Используем данные из currentCall');
-            callSession = currentCall;
+        // Если нет id, пытаемся взять его из currentCall или из DOM/статуса
+        if ((!callSession || !callSession.id) && currentCall && (currentCall.id || currentCall.callId)) {
+            console.log('⚠️ Используем данные из currentCall для восстановления id');
+            callSession = { ...callSession, id: currentCall.id || currentCall.callId, caller: callSession.caller || currentCall.caller, offer: callSession.offer || currentCall.offer, withVideo: callSession.withVideo ?? currentCall.withVideo };
         }
         
         // Проверяем, что у нас есть все необходимые данные
@@ -1124,8 +1128,10 @@ async function acceptIncomingCall(callSession) {
         
         // Показываем локальное видео
         localStream = stream;
-        localVideo.srcObject = localStream;
-        localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
+        if (localVideo) {
+            localVideo.srcObject = localStream;
+            localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
+        }
         
         // Устанавливаем удаленное описание
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -1148,7 +1154,8 @@ async function acceptIncomingCall(callSession) {
         });
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            // На Vercel при холодном старте возможна краткая рассинхронизация, не роняем звонок
+            console.warn('⚠️ Сервер ответил ошибкой на /call/answer:', response.status);
         }
         
         // Дополняем текущий звонок потоком
