@@ -912,6 +912,13 @@ async function checkIncomingCalls() {
         const incomingCalls = await response.json();
         
         for (const callSession of incomingCalls) {
+            console.log('📋 Обрабатываем звонок:', {
+                id: callSession.id,
+                caller: callSession.caller,
+                hasOffer: !!callSession.offer,
+                offerType: typeof callSession.offer
+            });
+            
             if (!incomingCallShown && !processedCallIds.has(callSession.id)) {
                 console.log('📞 Входящий звонок от:', callSession.caller);
                 
@@ -927,7 +934,12 @@ async function checkIncomingCalls() {
                 
                 // Устанавливаем обработчики кнопок
                 document.getElementById('acceptCallBtn').onclick = () => acceptIncomingCall(callSession);
-                document.getElementById('rejectCallBtn').onclick = () => rejectIncomingCall(callSession.id);
+                document.getElementById('rejectCallBtn').onclick = () => {
+                    const callId = callSession.id || (currentCall && currentCall.id);
+                    rejectIncomingCall(callId);
+                };
+                
+                console.log('🔗 Обработчики кнопок установлены для звонка:', callSession.id);
                 
                 break; // Показываем только первый звонок
             }
@@ -942,8 +954,9 @@ function showIncomingCall(call) {
     if (incomingCallShown) return;
     
     console.log('📞 Входящий звонок от:', call.caller);
+    console.log('📋 Полные данные входящего звонка:', call);
     
-    incomingCallerName.textContent = call.caller;
+    incomingCallerName.textContent = call.caller || 'Неизвестный';
     incomingCallType.textContent = call.withVideo ? 'Видеозвонок' : 'Аудиозвонок';
     
     // Сохраняем данные звонка
@@ -970,13 +983,30 @@ function hideIncomingCall() {
 async function acceptIncomingCall(callSession) {
     try {
         console.log('✅ Принимаем входящий звонок от:', callSession.caller);
+        console.log('📋 Полные данные звонка:', callSession);
         console.log('📋 Данные звонка:', {
             id: callSession.id,
+            caller: callSession.caller,
             status: callSession.status,
             withVideo: callSession.withVideo,
             offerType: typeof callSession.offer,
             offerRaw: callSession.offer
         });
+        
+        // Если callSession не содержит нужные данные, используем currentCall
+        if (!callSession.id && currentCall) {
+            console.log('⚠️ Используем данные из currentCall');
+            callSession = currentCall;
+        }
+        
+        // Проверяем, что у нас есть все необходимые данные
+        if (!callSession.id) {
+            throw new Error('ID звонка отсутствует');
+        }
+        
+        if (!callSession.caller) {
+            throw new Error('Имя звонящего отсутствует');
+        }
         
         // Парсим offer из callSession
         let offer;
@@ -1093,6 +1123,14 @@ async function acceptIncomingCall(callSession) {
 async function rejectIncomingCall(callId) {
     try {
         console.log('❌ Отклоняем входящий звонок:', callId);
+        
+        // Проверяем, что callId передан
+        if (!callId) {
+            console.error('❌ ID звонка не передан для отклонения');
+            hideIncomingCall();
+            stopRingtone();
+            return;
+        }
         
         // Отправляем отклонение на сервер
         const response = await fetch('/call/reject', {
