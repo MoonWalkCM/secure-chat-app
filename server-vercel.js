@@ -764,7 +764,9 @@ app.post('/call/answer', async (req, res) => {
             return res.json({ success: true, message: 'Звонок принят (fallback)' });
         }
         
-        if (callSession.recipient !== answerer.login) {
+        // Если recipient не совпадает (рассинхронизация), но пользователь участник — разрешаем принять
+        const isParticipant = callSession.caller === answerer.login || callSession.recipient === answerer.login || (Array.isArray(callSession.participants) && callSession.participants.includes(answerer.login));
+        if (!isParticipant) {
             console.log('🚫 Пользователь не авторизован для принятия звонка:', answerer.login);
             return res.status(403).json({ error: 'Не авторизован для ответа на этот звонок' });
         }
@@ -1196,9 +1198,17 @@ app.get('/call/status/:callId', async (req, res) => {
             return res.json({ success: true, callSession: { id: callId, status: 'pending', iceCandidates: [] } });
         }
         
-        if (!callSession.participants.includes(user.login)) {
-            console.log('🚫 Пользователь не авторизован для звонка:', user.login);
-            return res.status(403).json({ error: 'Не авторизован для этого звонка' });
+        // Более мягкая проверка авторизации для устойчивости между инстансами
+        let isAuthorized = true;
+        const participants = Array.isArray(callSession.participants) ? callSession.participants : [];
+        if (participants.length > 0) {
+            isAuthorized = participants.includes(user.login) || callSession.caller === user.login || callSession.recipient === user.login;
+        } else {
+            isAuthorized = (callSession.caller === user.login || callSession.recipient === user.login);
+        }
+        if (!isAuthorized) {
+            console.log('⚠️ Пользователь не найден среди участников, возвращаем pending вместо 403:', user.login);
+            return res.json({ success: true, callSession: { id: callId, status: 'pending', iceCandidates: [] } });
         }
         
         console.log('✅ Статус звонка найден:', callSession.status);
