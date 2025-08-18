@@ -232,8 +232,9 @@ async function startVideoCall(recipient) {
             peerConnection.addTrack(track, stream);
         });
         
-        // Показываем локальное видео
-        localVideo.srcObject = stream;
+        // Сохраняем локальный поток и показываем видео
+        localStream = stream;
+        localVideo.srcObject = localStream;
         localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
         
         // Создаем offer
@@ -397,7 +398,7 @@ function createPeerConnection() {
         console.log('📺 Получен удаленный поток');
         
         if (event.streams && event.streams[0]) {
-            const remoteStream = event.streams[0];
+            remoteStream = event.streams[0];
             
             // Показываем удаленное видео
             remoteVideo.srcObject = remoteStream;
@@ -551,11 +552,11 @@ function toggleMute() {
         // Обновляем кнопки
         const muteIcon = isMuted ? '🔇' : '🎤';
         muteBtn.innerHTML = `<span class="btn-icon">${muteIcon}</span>`;
-        fsMuteBtn.innerHTML = `<span class="btn-icon">${muteIcon}</span>`;
+        if (fsMuteBtn) fsMuteBtn.innerHTML = `<span class="btn-icon">${muteIcon}</span>`;
         
         // Обновляем стили
         muteBtn.classList.toggle('active', isMuted);
-        fsMuteBtn.classList.toggle('active', isMuted);
+        if (fsMuteBtn) fsMuteBtn.classList.toggle('active', isMuted);
         
         console.log(isMuted ? '🔇 Микрофон отключен' : '🎤 Микрофон включен');
     }
@@ -573,11 +574,11 @@ function toggleVideo() {
         // Обновляем кнопки
         const videoIcon = isVideoEnabled ? '📹' : '🚫';
         videoBtn.innerHTML = `<span class="btn-icon">${videoIcon}</span>`;
-        fsVideoBtn.innerHTML = `<span class="btn-icon">${videoIcon}</span>`;
+        if (fsVideoBtn) fsVideoBtn.innerHTML = `<span class="btn-icon">${videoIcon}</span>`;
         
         // Обновляем стили
         videoBtn.classList.toggle('active', !isVideoEnabled);
-        fsVideoBtn.classList.toggle('active', !isVideoEnabled);
+        if (fsVideoBtn) fsVideoBtn.classList.toggle('active', !isVideoEnabled);
         
         console.log(isVideoEnabled ? '📹 Камера включена' : '🚫 Камера отключена');
     }
@@ -612,6 +613,7 @@ async function flipCamera() {
         const newVideoTrack = newStream.getVideoTracks()[0];
         
         // Заменяем трек в локальном потоке
+        // Обновляем локальный поток
         localStream.removeTrack(oldVideoTrack);
         localStream.addTrack(newVideoTrack);
         
@@ -636,6 +638,12 @@ async function flipCamera() {
 
 // Вход в полноэкранный режим
 function enterFullscreen() {
+    if (!remoteStream) {
+        remoteStream = remoteVideo?.srcObject || remoteStream;
+    }
+    if (!localStream) {
+        localStream = localVideo?.srcObject || localStream;
+    }
     if (!remoteStream) return;
     
     isFullscreen = true;
@@ -1115,7 +1123,8 @@ async function acceptIncomingCall(callSession) {
         });
         
         // Показываем локальное видео
-        localVideo.srcObject = stream;
+        localStream = stream;
+        localVideo.srcObject = localStream;
         localVideo.play().catch(e => console.log('⚠️ Ошибка воспроизведения локального видео:', e));
         
         // Устанавливаем удаленное описание
