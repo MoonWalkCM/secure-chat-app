@@ -527,7 +527,7 @@ async function flushPendingIceCandidates() {
 function showCallInterface() {
     contactsSection.style.display = 'none';
     callInterface.style.display = 'flex';
-    updateCallStatus('Подключение...');
+    updateCallStatus('Набор...');
 }
 
 // Скрытие интерфейса звонка
@@ -769,9 +769,7 @@ async function getCallStatus(callId) {
         });
         
         if (response.status === 404) {
-            console.log('ℹ️ Звонок не найден на сервере, сбрасываем локально');
-            // Сбрасываем звонок локально если он не найден на сервере
-            endCall();
+            console.log('ℹ️ Звонок не найден на сервере (404), подождем и попробуем позже');
             return null;
         }
         
@@ -803,9 +801,8 @@ function startCallStatusPolling() {
         const callSession = await getCallStatus(currentCall.callId);
         
         if (!callSession) {
-            // Звонок не найден или произошла ошибка - сбрасываем
-            console.log('ℹ️ Звонок не найден на сервере, сбрасываем локально');
-            endCall();
+            // Пока нет данных — продолжаем ждать
+            updateCallStatus('Набор...');
             return;
         }
         
@@ -894,14 +891,14 @@ function handleCallStatusUpdate(callSession) {
     
     switch (callSession.status) {
         case 'active':
-            updateCallStatus('Подключено');
+            updateCallStatus('Разговор идет');
             break;
         case 'ended':
         case 'rejected':
             endCall();
             break;
         case 'pending':
-            updateCallStatus('Ожидание ответа...');
+            updateCallStatus('Набор...');
             break;
     }
     
