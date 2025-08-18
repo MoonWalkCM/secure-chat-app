@@ -226,7 +226,9 @@ async function startVideoCall(recipient) {
         const offer = await peerConnection.createOffer();
         console.log('📋 Создан offer:', {
             type: offer.type,
-            sdpLength: offer.sdp ? offer.sdp.length : 0
+            sdpLength: offer.sdp ? offer.sdp.length : 0,
+            offerKeys: Object.keys(offer),
+            offerType: typeof offer
         });
         
         // Проверяем offer перед отправкой
@@ -239,6 +241,13 @@ async function startVideoCall(recipient) {
         console.log('✅ Локальное описание установлено');
         
         // Отправляем offer на сервер
+        console.log('📤 Отправляем offer на сервер:', {
+            recipient: recipient,
+            offerType: offer.type,
+            offerKeys: Object.keys(offer),
+            withVideo: true
+        });
+        
         const response = await fetch('/call/offer', {
             method: 'POST',
             headers: {
@@ -264,7 +273,8 @@ async function startVideoCall(recipient) {
             recipient: recipient,
             isIncoming: false,
             stream: stream,
-            answerReceived: false
+            answerReceived: false,
+            status: 'pending'
         };
         
         console.log('✅ Видеозвонок инициирован:', data.callId);
@@ -417,6 +427,12 @@ function createPeerConnection() {
 async function sendIceCandidate(candidate) {
     if (!currentCall || !currentCall.callId) {
         console.log('⚠️ Нет активного звонка для отправки ICE кандидата');
+        return;
+    }
+    
+    // Проверяем, что звонок активен и не завершен
+    if (currentCall.status === 'ended' || currentCall.status === 'rejected') {
+        console.log('⚠️ Звонок завершен, не отправляем ICE кандидат');
         return;
     }
     
@@ -740,15 +756,18 @@ function startCallStatusPolling() {
         // Обрабатываем изменения статуса
         if (callSession.status === 'rejected') {
             console.log('📞 Звонок отклонен');
+            currentCall.status = 'rejected';
             endCall();
         } else if (callSession.status === 'ended') {
             console.log('📞 Звонок завершен');
+            currentCall.status = 'ended';
             endCall();
         } else if (callSession.status === 'active' && callSession.answer) {
             // Обрабатываем ответ на звонок
             if (!currentCall.answerReceived) {
                 console.log('📞 Получен ответ на звонок, обрабатываем...');
                 currentCall.answerReceived = true;
+                currentCall.status = 'active';
                 await handleCallAnswer(callSession.answer);
             }
         }
@@ -762,6 +781,7 @@ function startCallStatusPolling() {
                     console.log('📋 Offer распарсен:', parsedOffer.type);
                 } catch (e) {
                     console.error('❌ Ошибка парсинга offer в статусе:', e);
+                    console.error('📋 Сырой offer:', callSession.offer);
                 }
             } else {
                 console.log('📋 Offer уже объект:', callSession.offer.type);
@@ -778,6 +798,7 @@ function startCallStatusPolling() {
                     console.log('📋 Answer распарсен:', parsedAnswer.type);
                 } catch (e) {
                     console.error('❌ Ошибка парсинга answer в статусе:', e);
+                    console.error('📋 Сырой answer:', callSession.answer);
                 }
             } else {
                 console.log('📋 Answer уже объект:', callSession.answer.type);
@@ -962,14 +983,15 @@ async function acceptIncomingCall(callSession) {
         if (typeof callSession.offer === 'string') {
             try {
                 offer = JSON.parse(callSession.offer);
-                console.log('✅ Offer успешно распарсен из строки:', offer);
+                console.log('✅ Offer успешно распарсен из строки:', offer.type);
             } catch (e) {
                 console.error('❌ Ошибка парсинга offer:', e);
+                console.error('📋 Сырой offer:', callSession.offer);
                 throw new Error('Неверный формат offer');
             }
         } else {
             offer = callSession.offer;
-            console.log('✅ Offer уже объект:', offer);
+            console.log('✅ Offer уже объект:', offer.type);
         }
         
         // Проверяем, что offer не null и имеет правильную структуру
@@ -1042,7 +1064,8 @@ async function acceptIncomingCall(callSession) {
             recipient: callSession.caller,
             isIncoming: true,
             stream: stream,
-            answerReceived: true
+            answerReceived: true,
+            status: 'active'
         };
         
         console.log('✅ Входящий звонок принят');
@@ -1085,6 +1108,10 @@ async function rejectIncomingCall(callId) {
         
         if (!response.ok) {
             console.error('❌ Ошибка отклонения звонка:', response.status);
+            const errorData = await response.json().catch(() => ({}));
+            console.error('📋 Детали ошибки:', errorData);
+        } else {
+            console.log('✅ Запрос на отклонение отправлен успешно');
         }
         
         // Скрываем интерфейс входящего звонка
